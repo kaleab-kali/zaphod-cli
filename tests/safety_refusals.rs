@@ -96,9 +96,13 @@ fn switch_rejects_missing_target_branch() {
     assert_success(&pair);
     git(dir.path(), ["branch", "-D", "feature/ui"]);
 
+    let status = zaphod(dir.path(), ["status"]);
+    assert_success(&status);
+    assert_stdout_contains(&status, "Switch: refused (target branch is missing)");
+
     let output = zaphod(dir.path(), ["switch"]);
 
     assert!(!output.status.success());
-    assert_stderr_contains(&output, "branch 'feature/ui' was not found");
+    assert_stderr_contains(&output, "refusing to switch: target branch is missing");
     assert_eq!(current_branch(dir.path()), "feature/api");
 }

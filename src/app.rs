@@ -106,7 +106,6 @@ fn switch_branches(name: &str) -> Result<(), AppError> {
         });
     }
 
-    ensure_branch_exists(&context.repository, &context.status.other)?;
     context.repository.switch_branch(&context.status.other)?;
 
     println!(
@@ -125,6 +124,13 @@ fn load_status_context(name: &str) -> Result<StatusContext, AppError> {
         name: name.to_owned(),
     })?;
     let current = repository.current_branch()?;
+    let other = pair
+        .other_branch(&current)
+        .ok_or_else(|| StatusError::CurrentBranchNotPaired {
+            pair: pair.name.clone(),
+            branch: current.clone(),
+        })?;
+    let target_branch_exists = repository.branch_exists(other)?;
     let is_dirty = repository.is_dirty()?;
 
     let status = PairStatus::new(
@@ -133,6 +139,7 @@ fn load_status_context(name: &str) -> Result<StatusContext, AppError> {
         is_dirty,
         repository.is_merge_in_progress(),
         repository.is_rebase_in_progress(),
+        target_branch_exists,
     )
     .map_err(AppError::from)?;
 

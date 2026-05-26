@@ -21,6 +21,7 @@ impl PairStatus {
         is_dirty: bool,
         is_merge_in_progress: bool,
         is_rebase_in_progress: bool,
+        target_branch_exists: bool,
     ) -> Result<Self, StatusError> {
         let other = pair
             .other_branch(&current_branch)
@@ -43,6 +44,9 @@ impl PairStatus {
         }
         if is_rebase_in_progress {
             refusal_reasons.push(RefusalReason::RebaseInProgress);
+        }
+        if !target_branch_exists {
+            refusal_reasons.push(RefusalReason::TargetBranchMissing);
         }
 
         Ok(Self {
@@ -116,6 +120,7 @@ pub enum RefusalReason {
     DirtyWorktree,
     MergeInProgress,
     RebaseInProgress,
+    TargetBranchMissing,
 }
 
 impl Display for RefusalReason {
@@ -124,6 +129,7 @@ impl Display for RefusalReason {
             Self::DirtyWorktree => write!(formatter, "worktree has uncommitted changes"),
             Self::MergeInProgress => write!(formatter, "merge is in progress"),
             Self::RebaseInProgress => write!(formatter, "rebase is in progress"),
+            Self::TargetBranchMissing => write!(formatter, "target branch is missing"),
         }
     }
 }
@@ -157,8 +163,8 @@ mod tests {
     fn clean_pair_status_allows_switching() {
         let pair = pair();
 
-        let status =
-            PairStatus::new(&pair, "feature/api".to_owned(), false, false, false).expect("status");
+        let status = PairStatus::new(&pair, "feature/api".to_owned(), false, false, false, true)
+            .expect("status");
 
         assert_eq!(status.other, "feature/ui");
         assert_eq!(status.worktree, WorktreeStatus::Clean);
@@ -171,8 +177,8 @@ mod tests {
     fn dirty_pair_status_refuses_switching() {
         let pair = pair();
 
-        let status =
-            PairStatus::new(&pair, "feature/api".to_owned(), true, false, false).expect("status");
+        let status = PairStatus::new(&pair, "feature/api".to_owned(), true, false, false, true)
+            .expect("status");
 
         assert!(!status.switch_allowed);
         assert_eq!(status.refusal_reasons, vec![RefusalReason::DirtyWorktree]);
@@ -182,7 +188,7 @@ mod tests {
     fn status_rejects_unpaired_current_branch() {
         let pair = pair();
 
-        let error = PairStatus::new(&pair, "main".to_owned(), false, false, false)
+        let error = PairStatus::new(&pair, "main".to_owned(), false, false, false, true)
             .expect_err("reject unpaired branch");
 
         assert_eq!(
@@ -191,6 +197,20 @@ mod tests {
                 pair: "default".to_owned(),
                 branch: "main".to_owned(),
             }
+        );
+    }
+
+    #[test]
+    fn missing_target_branch_refuses_switching() {
+        let pair = pair();
+
+        let status = PairStatus::new(&pair, "feature/api".to_owned(), false, false, false, false)
+            .expect("status");
+
+        assert!(!status.switch_allowed);
+        assert_eq!(
+            status.refusal_reasons,
+            vec![RefusalReason::TargetBranchMissing]
         );
     }
 
