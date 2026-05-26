@@ -62,6 +62,12 @@ impl GitRepository {
 
         Ok(output.status.success())
     }
+
+    pub fn switch_branch(&self, branch: &str) -> Result<(), GitError> {
+        run_git(&self.root, ["switch", "--", branch])?;
+
+        Ok(())
+    }
 }
 
 #[derive(Debug)]
