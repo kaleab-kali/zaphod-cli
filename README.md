@@ -102,6 +102,60 @@ Git state: ready
 Switch: refused (worktree has uncommitted changes)
 ```
 
+## Workflows
+
+### Solo Development
+
+Pair your main integration branch with the branch you are actively changing:
+
+```sh
+zaphod pair main feature/search
+zaphod status
+zaphod switch
+```
+
+This keeps the relationship explicit while still letting Git own the actual
+branch state.
+
+### Split Work
+
+Pair two branches that represent different sides of the same task:
+
+```sh
+zaphod pair feature/api feature/ui --name search
+zaphod status --name search
+zaphod switch --name search
+```
+
+This is useful when backend and frontend changes move together, but should stay
+reviewable as separate branches.
+
+### Review Work
+
+Pair an implementation branch with a review or experiment branch:
+
+```sh
+zaphod pair feature/parser review/parser-notes --name parser-review
+```
+
+Use `zaphod list` when a repository has multiple named pairs.
+
+## Pair Naming
+
+Pair names are local labels stored in the repository metadata. Names may contain
+letters, numbers, `.`, `_`, and `-`.
+
+Good names are short and tied to the workflow:
+
+```text
+default
+api
+search-ui
+parser-review
+```
+
+Avoid names that depend on one person's machine or temporary context.
+
 ## Commands
 
 ### `zaphod pair <left> <right>`
@@ -217,6 +271,18 @@ cargo fmt --all -- --check
 cargo clippy --all-targets --all-features -- -D warnings
 cargo test --all-targets --all-features
 ```
+
+Build a release binary locally:
+
+```sh
+cargo build --release
+```
+
+The binary will be written to `target/release/zaphod` on Unix-like systems and
+`target/release/zaphod.exe` on Windows.
+
+Release packaging is not automated yet. Before tagging a release, run the full
+quality gate and manually test the release binary in a temporary Git repository.
 
 ## Contributing
 
