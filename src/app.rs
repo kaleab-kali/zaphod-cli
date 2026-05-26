@@ -2,8 +2,11 @@ use crate::cli::{Cli, CliCommand};
 use crate::core::{BranchPair, PairError, PairStatus, RefusalReason, StatusError};
 use crate::git::{GitError, GitRepository};
 use crate::metadata::{MetadataError, MetadataStore};
+use clap::CommandFactory;
+use clap_complete::Shell;
 use std::error::Error;
 use std::fmt::{self, Display, Formatter};
+use std::io;
 
 pub fn run(cli: Cli) -> Result<(), AppError> {
     match cli.command {
@@ -12,7 +15,17 @@ pub fn run(cli: Cli) -> Result<(), AppError> {
         CliCommand::Unpair { name } => unpair_branches(&name),
         CliCommand::Status { json, name } => show_status(&name, json),
         CliCommand::Switch { name } => switch_branches(&name),
+        CliCommand::Completions { shell } => generate_completions(shell),
     }
+}
+
+fn generate_completions(shell: Shell) -> Result<(), AppError> {
+    let mut command = Cli::command();
+    let mut stdout = io::stdout();
+
+    clap_complete::generate(shell, &mut command, "zaphod", &mut stdout);
+
+    Ok(())
 }
 
 fn pair_branches(name: String, left: String, right: String) -> Result<(), AppError> {

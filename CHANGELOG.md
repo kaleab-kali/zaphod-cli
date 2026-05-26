@@ -16,5 +16,6 @@ and this project intends to follow semantic versioning once releases begin.
 - `pair`, `list`, and `unpair` commands.
 - `status` command with plain text and JSON output.
 - `switch` command with dirty-worktree and in-progress Git operation refusals.
+- `completions` command for shell completion generation.
 - Integration tests that exercise real temporary Git repositories.
 - README workflow guidance, pair naming guidance, and release build notes.
