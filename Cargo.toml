@@ -8,6 +8,17 @@ repository = "https://github.com/kaleab-kali/zaphod-cli"
 license = "MIT"
 keywords = ["git", "cli", "workflow", "branches"]
 categories = ["command-line-utilities", "development-tools"]
+include = [
+    "src/**",
+    "tests/**",
+    "Cargo.lock",
+    "Cargo.toml",
+    "CHANGELOG.md",
+    "CONTRIBUTING.md",
+    "LICENSE",
+    "README.md",
+    "SECURITY.md",
+]
 
 [[bin]]
 name = "zaphod"
