@@ -1,5 +1,5 @@
 use crate::cli::{Cli, CliCommand};
-use crate::core::{BranchPair, PairError, PairStatus, StatusError};
+use crate::core::{BranchPair, PairError, PairStatus, RefusalReason, StatusError};
 use crate::git::{GitError, GitRepository};
 use crate::metadata::{MetadataError, MetadataStore};
 use std::error::Error;
@@ -11,7 +11,7 @@ pub fn run(cli: Cli) -> Result<(), AppError> {
         CliCommand::List => list_pairs(),
         CliCommand::Unpair { name } => unpair_branches(&name),
         CliCommand::Status { json, name } => show_status(&name, json),
-        CliCommand::Switch { .. } => Err(AppError::NotImplemented { command: "switch" }),
+        CliCommand::Switch { name } => switch_branches(&name),
     }
 }
 
@@ -73,18 +73,38 @@ fn unpair_branches(name: &str) -> Result<(), AppError> {
 }
 
 fn show_status(name: &str, json: bool) -> Result<(), AppError> {
-    let status = load_pair_status(name)?;
+    let context = load_status_context(name)?;
 
     if json {
-        println!("{}", serde_json::to_string_pretty(&status)?);
+        println!("{}", serde_json::to_string_pretty(&context.status)?);
     } else {
-        print_status(&status);
+        print_status(&context.status);
     }
 
     Ok(())
 }
 
-fn load_pair_status(name: &str) -> Result<PairStatus, AppError> {
+fn switch_branches(name: &str) -> Result<(), AppError> {
+    let context = load_status_context(name)?;
+
+    if !context.status.switch_allowed {
+        return Err(AppError::SwitchRefused {
+            reasons: context.status.refusal_reasons,
+        });
+    }
+
+    ensure_branch_exists(&context.repository, &context.status.other)?;
+    context.repository.switch_branch(&context.status.other)?;
+
+    println!(
+        "Switched pair '{}': {} -> {}",
+        context.status.pair, context.status.current, context.status.other
+    );
+
+    Ok(())
+}
+
+fn load_status_context(name: &str) -> Result<StatusContext, AppError> {
     let repository = GitRepository::discover(".")?;
     let store = MetadataStore::for_repository(&repository);
     let pairs = store.load()?;
@@ -94,14 +114,16 @@ fn load_pair_status(name: &str) -> Result<PairStatus, AppError> {
     let current = repository.current_branch()?;
     let is_dirty = repository.is_dirty()?;
 
-    PairStatus::new(
+    let status = PairStatus::new(
         pair,
         current,
         is_dirty,
         repository.is_merge_in_progress(),
         repository.is_rebase_in_progress(),
     )
-    .map_err(AppError::from)
+    .map_err(AppError::from)?;
+
+    Ok(StatusContext { repository, status })
 }
 
 fn print_status(status: &PairStatus) {
@@ -124,6 +146,11 @@ fn print_status(status: &PairStatus) {
     }
 }
 
+struct StatusContext {
+    repository: GitRepository,
+    status: PairStatus,
+}
+
 fn ensure_branch_exists(repository: &GitRepository, branch: &str) -> Result<(), AppError> {
     if repository.branch_exists(branch)? {
         return Ok(());
@@ -144,6 +171,7 @@ pub enum AppError {
     PairNotFound { name: String },
     Serialize { source: serde_json::Error },
     Status { source: StatusError },
+    SwitchRefused { reasons: Vec<RefusalReason> },
 }
 
 impl Display for AppError {
@@ -162,6 +190,14 @@ impl Display for AppError {
             Self::PairNotFound { name } => write!(formatter, "pair '{name}' was not found"),
             Self::Serialize { source } => Display::fmt(source, formatter),
             Self::Status { source } => Display::fmt(source, formatter),
+            Self::SwitchRefused { reasons } => {
+                let reasons = reasons
+                    .iter()
+                    .map(ToString::to_string)
+                    .collect::<Vec<_>>()
+                    .join("; ");
+                write!(formatter, "refusing to switch: {reasons}")
+            }
         }
     }
 }
@@ -176,7 +212,8 @@ impl Error for AppError {
             Self::Status { source } => Some(source),
             Self::BranchNotFound { .. }
             | Self::NotImplemented { .. }
-            | Self::PairNotFound { .. } => None,
+            | Self::PairNotFound { .. }
+            | Self::SwitchRefused { .. } => None,
         }
     }
 }

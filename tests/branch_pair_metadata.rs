@@ -94,6 +94,41 @@ fn status_reports_dirty_worktree_refusal() {
 }
 
 #[test]
+fn switch_moves_to_other_branch_when_clean() {
+    let dir = TestDir::new();
+    init_repo_with_pair_branches(dir.path());
+    let pair = zaphod(dir.path(), ["pair", "feature/api", "feature/ui"]);
+    assert_success(&pair);
+
+    let output = zaphod(dir.path(), ["switch"]);
+
+    assert_success(&output);
+    assert_stdout_contains(
+        &output,
+        "Switched pair 'default': feature/api -> feature/ui",
+    );
+    assert_eq!(current_branch(dir.path()), "feature/ui");
+}
+
+#[test]
+fn switch_refuses_dirty_worktree() {
+    let dir = TestDir::new();
+    init_repo_with_pair_branches(dir.path());
+    let pair = zaphod(dir.path(), ["pair", "feature/api", "feature/ui"]);
+    assert_success(&pair);
+    fs::write(dir.path().join("dirty.txt"), "local work\n").expect("write dirty file");
+
+    let output = zaphod(dir.path(), ["switch"]);
+
+    assert!(!output.status.success());
+    assert_stderr_contains(
+        &output,
+        "refusing to switch: worktree has uncommitted changes",
+    );
+    assert_eq!(current_branch(dir.path()), "feature/api");
+}
+
+#[test]
 fn pair_rejects_missing_branch() {
     let dir = TestDir::new();
     init_repo_with_pair_branches(dir.path());
@@ -141,6 +176,21 @@ where
         .expect("run git");
 
     assert_success(&output);
+}
+
+fn current_branch(working_dir: &Path) -> String {
+    let output = Command::new("git")
+        .args(["branch", "--show-current"])
+        .current_dir(working_dir)
+        .output()
+        .expect("read current branch");
+
+    assert_success(&output);
+
+    String::from_utf8(output.stdout)
+        .expect("current branch utf8")
+        .trim()
+        .to_owned()
 }
 
 fn assert_success(output: &Output) {
