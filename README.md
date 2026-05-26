@@ -296,8 +296,16 @@ cargo build --release
 The binary will be written to `target/release/zaphod` on Unix-like systems and
 `target/release/zaphod.exe` on Windows.
 
-Release packaging is not automated yet. Before tagging a release, run the full
-quality gate and manually test the release binary in a temporary Git repository.
+The release workflow builds binary artifacts for Linux, macOS, and Windows when
+a `v*` tag is pushed:
+
+```sh
+git tag v0.1.0
+git push origin v0.1.0
+```
+
+Before tagging a release, run the full quality gate and manually test the
+release binary in a temporary Git repository.
 
 ## Contributing
 
