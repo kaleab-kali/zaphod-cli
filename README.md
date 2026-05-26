@@ -9,14 +9,15 @@ goal is to make one repetitive workflow easier without hiding what is happening.
 
 ## Project Status
 
-Zaphod is in early development. The first public milestone is a conservative
-`v0.1` CLI that can:
+Zaphod is in early development. The current CLI can:
 
 - Detect the current Git repository.
 - Pair two branches in repo-local metadata.
 - Show the active pair status.
 - Switch to the paired branch.
+- List and remove branch pairs.
 - Refuse unsafe switches when the worktree is dirty or Git is mid-operation.
+- Emit JSON status for scripts.
 
 Until `v0.1` is tagged, command names and output may change.
 
@@ -55,22 +56,28 @@ work. In particular, switching should fail when:
 Forceful behavior may be added later, but the first release prioritizes clear
 refusals over convenience.
 
-## Planned Usage
+## Installation
 
-The intended `v0.1` workflow looks like this:
+Zaphod is not published to crates.io yet. Install from a local checkout:
+
+```sh
+cargo install --path .
+```
+
+Then confirm the binary is available:
+
+```sh
+zaphod --help
+```
+
+## Quickstart
+
+Inside a Git repository with two existing local branches:
 
 ```sh
 zaphod pair feature/api feature/ui
 zaphod status
 zaphod switch
-```
-
-Additional planned commands:
-
-```sh
-zaphod list
-zaphod unpair
-zaphod status --json
 ```
 
 Example status output:
@@ -80,7 +87,105 @@ Pair: default
 Current: feature/api
 Other: feature/ui
 Worktree: clean
+Git state: ready
 Switch: allowed
+```
+
+If the worktree is dirty, switching is refused:
+
+```text
+Pair: default
+Current: feature/api
+Other: feature/ui
+Worktree: dirty
+Git state: ready
+Switch: refused (worktree has uncommitted changes)
+```
+
+## Commands
+
+### `zaphod pair <left> <right>`
+
+Store a branch pair in the current repository:
+
+```sh
+zaphod pair feature/api feature/ui
+```
+
+Use `--name` to store more than one pair:
+
+```sh
+zaphod pair main feature/api --name api
+```
+
+Both branches must already exist locally.
+
+### `zaphod status`
+
+Show the active pair status:
+
+```sh
+zaphod status
+```
+
+For scripts, use JSON output:
+
+```sh
+zaphod status --json
+```
+
+### `zaphod switch`
+
+Switch to the other branch in the pair:
+
+```sh
+zaphod switch
+```
+
+Zaphod refuses to switch if the worktree is dirty, a merge is in progress, or a
+rebase is in progress.
+
+### `zaphod list`
+
+List all branch pairs configured for the current repository:
+
+```sh
+zaphod list
+```
+
+### `zaphod unpair`
+
+Remove a branch pair:
+
+```sh
+zaphod unpair
+```
+
+Use `--name` to remove a named pair:
+
+```sh
+zaphod unpair --name api
+```
+
+## Demo Transcript
+
+```text
+$ git branch --show-current
+feature/api
+
+$ zaphod pair feature/api feature/ui
+Paired 'default': feature/api <-> feature/ui
+
+$ zaphod status
+Pair: default
+Current: feature/api
+Other: feature/ui
+Worktree: clean
+Git state: ready
+Switch: allowed
+
+$ zaphod switch
+Switched pair 'default': feature/api -> feature/ui
 ```
 
 ## Metadata
@@ -88,27 +193,15 @@ Switch: allowed
 Zaphod stores branch pair data inside the current repository under `.git/zaphod`.
 
 This keeps pair metadata local to the repository and avoids changing global Git
-configuration. The metadata format is planned to be TOML so it can stay readable
-and easy to debug.
-
-## Installation
-
-Installation instructions will be added once the first runnable version exists.
-
-Planned source install:
-
-```sh
-cargo install --path .
-```
-
-Future releases may include prebuilt binaries.
+configuration. The metadata format is TOML so it stays readable and easy to
+debug.
 
 ## Development
 
-Zaphod is planned as a Rust CLI using:
+Zaphod is a Rust CLI using:
 
 - `clap` for command parsing.
-- `serde` and TOML for metadata.
+- `serde`, `serde_json`, and TOML for metadata and machine-readable output.
 - Carefully wrapped `git` commands for repository operations.
 
 The implementation is organized around three boundaries:
@@ -117,11 +210,17 @@ The implementation is organized around three boundaries:
 - Core branch-pair and safety logic.
 - Git repository adapter.
 
+Run the local quality gate before opening a pull request:
+
+```sh
+cargo fmt --all -- --check
+cargo clippy --all-targets --all-features -- -D warnings
+cargo test --all-targets --all-features
+```
+
 ## Contributing
 
-Contributions are welcome once the initial scaffold is in place.
-
-For now, the most useful contributions are:
+Contributions are welcome. The most useful contributions are:
 
 - Clear bug reports.
 - Small pull requests with tests.
