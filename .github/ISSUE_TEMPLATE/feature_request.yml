@@ -19,6 +19,18 @@ body:
     validations:
       required: true
   - type: textarea
+    id: workflow
+    attributes:
+      label: Example workflow
+      description: Show the commands or output you would expect to use.
+      placeholder: |
+        zaphod pair main feature/search
+        zaphod status
+        zaphod switch
+      render: text
+    validations:
+      required: true
+  - type: textarea
     id: safety
     attributes:
       label: Safety considerations
