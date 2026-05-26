@@ -195,7 +195,10 @@ mod tests {
 
         let repo = GitRepository::discover(&nested).expect("discover repository");
 
-        assert_eq!(repo.root(), dir.path());
+        assert_eq!(
+            fs::canonicalize(repo.root()).expect("canonical repository root"),
+            fs::canonicalize(dir.path()).expect("canonical test directory")
+        );
     }
 
     #[test]
