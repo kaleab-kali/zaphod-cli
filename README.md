@@ -189,6 +189,38 @@ For scripts, use JSON output:
 zaphod status --json
 ```
 
+JSON fields use script-friendly names:
+
+```json
+{
+  "pair": "default",
+  "current": "feature/api",
+  "other": "feature/ui",
+  "worktree": "clean",
+  "git_state": "ready",
+  "switch_allowed": true,
+  "refusal_reasons": []
+}
+```
+
+When switching is refused, `switch_allowed` is `false` and
+`refusal_reasons` contains one or more values:
+
+```json
+{
+  "pair": "default",
+  "current": "feature/api",
+  "other": "feature/ui",
+  "worktree": "dirty",
+  "git_state": "ready",
+  "switch_allowed": false,
+  "refusal_reasons": ["dirty_worktree"]
+}
+```
+
+Known refusal reasons are `dirty_worktree`, `merge_in_progress`,
+`rebase_in_progress`, and `target_branch_missing`.
+
 ### `zaphod switch`
 
 Switch to the other branch in the pair:
@@ -198,7 +230,8 @@ zaphod switch
 ```
 
 Zaphod refuses to switch if the worktree is dirty, a merge is in progress, or a
-rebase is in progress.
+rebase is in progress. It also refuses when the paired target branch no longer
+exists. Use `zaphod status` to see the current refusal reason before switching.
 
 ### `zaphod list`
 
