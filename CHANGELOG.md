@@ -20,3 +20,13 @@ and this project intends to follow semantic versioning once releases begin.
 - Integration tests that exercise real temporary Git repositories.
 - README workflow guidance, pair naming guidance, and release build notes.
 - GitHub Actions workflow for release binary artifacts.
+
+### Changed
+
+- README documentation now shows the `status --json` shape and known refusal
+  reason values for script users.
+
+### Fixed
+
+- `status` now reports a missing paired target branch as a switch refusal,
+  matching the behavior of `switch`.
