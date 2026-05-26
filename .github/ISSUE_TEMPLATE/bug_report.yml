@@ -24,8 +24,18 @@ body:
       label: Reproduction
       description: Include the exact commands and repository state if possible.
       placeholder: |
+        git branch --show-current
         git status --short --branch
         zaphod status
+        zaphod switch
+    validations:
+      required: true
+  - type: textarea
+    id: actual-output
+    attributes:
+      label: Actual output
+      description: Paste the Zaphod output or error message.
+      render: text
     validations:
       required: true
   - type: input
@@ -33,6 +43,8 @@ body:
     attributes:
       label: Zaphod version
       placeholder: zaphod --version
+    validations:
+      required: true
   - type: dropdown
     id: operating-system
     attributes:
