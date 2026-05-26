@@ -166,7 +166,6 @@ pub enum AppError {
     BranchNotFound { branch: String },
     Git { source: GitError },
     Metadata { source: MetadataError },
-    NotImplemented { command: &'static str },
     Pair { source: PairError },
     PairNotFound { name: String },
     Serialize { source: serde_json::Error },
@@ -180,12 +179,6 @@ impl Display for AppError {
             Self::BranchNotFound { branch } => write!(formatter, "branch '{branch}' was not found"),
             Self::Git { source } => Display::fmt(source, formatter),
             Self::Metadata { source } => Display::fmt(source, formatter),
-            Self::NotImplemented { command } => {
-                write!(
-                    formatter,
-                    "zaphod {command} is planned but not implemented yet"
-                )
-            }
             Self::Pair { source } => Display::fmt(source, formatter),
             Self::PairNotFound { name } => write!(formatter, "pair '{name}' was not found"),
             Self::Serialize { source } => Display::fmt(source, formatter),
@@ -211,7 +204,6 @@ impl Error for AppError {
             Self::Serialize { source } => Some(source),
             Self::Status { source } => Some(source),
             Self::BranchNotFound { .. }
-            | Self::NotImplemented { .. }
             | Self::PairNotFound { .. }
             | Self::SwitchRefused { .. } => None,
         }
