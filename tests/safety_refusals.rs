@@ -1,5 +1,6 @@
 mod support;
 
+use serde_json::json;
 use std::fs;
 use support::{
     TestDir, assert_stderr_contains, assert_stdout_contains, assert_success, current_branch, git,
@@ -99,6 +100,23 @@ fn switch_rejects_missing_target_branch() {
     let status = zaphod(dir.path(), ["status"]);
     assert_success(&status);
     assert_stdout_contains(&status, "Switch: refused (target branch is missing)");
+
+    let json_status = zaphod(dir.path(), ["status", "--json"]);
+    assert_success(&json_status);
+    let status: serde_json::Value =
+        serde_json::from_slice(&json_status.stdout).expect("status json");
+    assert_eq!(
+        status,
+        json!({
+            "pair": "default",
+            "current": "feature/api",
+            "other": "feature/ui",
+            "worktree": "clean",
+            "git_state": "ready",
+            "switch_allowed": false,
+            "refusal_reasons": ["target_branch_missing"],
+        })
+    );
 
     let output = zaphod(dir.path(), ["switch"]);
 
