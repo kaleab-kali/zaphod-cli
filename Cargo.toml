@@ -1,0 +1,16 @@
+[package]
+name = "zaphod-cli"
+version = "0.1.0"
+edition = "2024"
+description = "A cautious Git workflow CLI for paired branches."
+readme = "README.md"
+repository = "https://github.com/kaleab-kali/zaphod-cli"
+license = "MIT"
+keywords = ["git", "cli", "workflow", "branches"]
+categories = ["command-line-utilities", "development-tools"]
+
+[[bin]]
+name = "zaphod"
+path = "src/main.rs"
+
+[dependencies]

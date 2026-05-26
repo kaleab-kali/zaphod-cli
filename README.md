@@ -133,4 +133,4 @@ tests cleanly.
 
 ## License
 
-License information will be added before the first public release.
+Zaphod is licensed under the MIT License. See [LICENSE](LICENSE).
