@@ -13,8 +13,11 @@ repository.
   `updates`.
 - Open pull requests for meaningful changes. Keep each pull request reviewable
   and scoped to one behavior, maintenance task, or documentation task.
-- Do not squash merge pull requests. Use normal merge commits unless the
-  maintainer explicitly requests a different strategy.
+- Do not squash merge pull requests. Do not rebase merge pull requests. Use
+  normal merge commits unless the maintainer explicitly requests a different
+  strategy.
+- Do not delete local or remote branches after merging pull requests unless the
+  maintainer explicitly asks for branch deletion.
 - Keep progress committed cleanly. Each commit should build toward an
   open-source-ready project state.
 
