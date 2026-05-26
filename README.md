@@ -18,6 +18,7 @@ Zaphod is in early development. The current CLI can:
 - List and remove branch pairs.
 - Refuse unsafe switches when the worktree is dirty or Git is mid-operation.
 - Emit JSON status for scripts.
+- Generate shell completions.
 
 Until `v0.1` is tagged, command names and output may change.
 
@@ -220,6 +221,20 @@ Use `--name` to remove a named pair:
 ```sh
 zaphod unpair --name api
 ```
+
+### `zaphod completions <shell>`
+
+Generate shell completions to stdout:
+
+```sh
+zaphod completions bash
+zaphod completions zsh
+zaphod completions fish
+zaphod completions powershell
+zaphod completions elvish
+```
+
+Redirect the output to the location expected by your shell.
 
 ## Demo Transcript
 

@@ -1,4 +1,5 @@
 use clap::{Parser, Subcommand};
+use clap_complete::Shell;
 
 #[derive(Debug, Parser)]
 #[command(
@@ -54,12 +55,19 @@ pub enum CliCommand {
 
     /// List all branch pairs in the current repository.
     List,
+
+    /// Generate shell completion scripts.
+    Completions {
+        /// Shell to generate completions for.
+        shell: Shell,
+    },
 }
 
 #[cfg(test)]
 mod tests {
     use super::{Cli, CliCommand};
     use clap::{CommandFactory, Parser};
+    use clap_complete::Shell;
 
     #[test]
     fn parser_definition_is_valid() {
@@ -103,5 +111,12 @@ mod tests {
                 name: "review".to_owned(),
             }
         );
+    }
+
+    #[test]
+    fn parses_completions_command() {
+        let cli = Cli::parse_from(["zaphod", "completions", "bash"]);
+
+        assert_eq!(cli.command, CliCommand::Completions { shell: Shell::Bash });
     }
 }
