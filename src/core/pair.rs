@@ -22,6 +22,16 @@ impl BranchPair {
 
         Ok(Self { name, left, right })
     }
+
+    pub fn other_branch(&self, current_branch: &str) -> Option<&str> {
+        if current_branch == self.left {
+            Some(&self.right)
+        } else if current_branch == self.right {
+            Some(&self.left)
+        } else {
+            None
+        }
+    }
 }
 
 #[derive(Debug, Default, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -156,5 +166,19 @@ mod tests {
         assert_eq!(previous.right, "feature/a");
         assert_eq!(pairs.pairs().len(), 1);
         assert_eq!(pairs.get("default").expect("pair").right, "feature/b");
+    }
+
+    #[test]
+    fn pair_finds_other_branch() {
+        let pair = BranchPair::new(
+            "default".to_owned(),
+            "feature/api".to_owned(),
+            "feature/ui".to_owned(),
+        )
+        .expect("valid pair");
+
+        assert_eq!(pair.other_branch("feature/api"), Some("feature/ui"));
+        assert_eq!(pair.other_branch("feature/ui"), Some("feature/api"));
+        assert_eq!(pair.other_branch("main"), None);
     }
 }

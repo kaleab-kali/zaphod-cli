@@ -49,6 +49,20 @@ fn pair_list_and_unpair_update_repo_metadata() {
     assert_success(&list);
     assert_stdout_contains(&list, "default: feature/api <-> feature/ui");
 
+    let status = zaphod(dir.path(), ["status"]);
+    assert_success(&status);
+    assert_stdout_contains(&status, "Pair: default");
+    assert_stdout_contains(&status, "Current: feature/api");
+    assert_stdout_contains(&status, "Other: feature/ui");
+    assert_stdout_contains(&status, "Worktree: clean");
+    assert_stdout_contains(&status, "Git state: ready");
+    assert_stdout_contains(&status, "Switch: allowed");
+
+    let json_status = zaphod(dir.path(), ["status", "--json"]);
+    assert_success(&json_status);
+    assert_stdout_contains(&json_status, "\"pair\": \"default\"");
+    assert_stdout_contains(&json_status, "\"switch_allowed\": true");
+
     let unpair = zaphod(dir.path(), ["unpair"]);
     assert_success(&unpair);
     assert_stdout_contains(
@@ -59,6 +73,24 @@ fn pair_list_and_unpair_update_repo_metadata() {
     let empty_list = zaphod(dir.path(), ["list"]);
     assert_success(&empty_list);
     assert_stdout_contains(&empty_list, "No branch pairs configured.");
+}
+
+#[test]
+fn status_reports_dirty_worktree_refusal() {
+    let dir = TestDir::new();
+    init_repo_with_pair_branches(dir.path());
+    let pair = zaphod(dir.path(), ["pair", "feature/api", "feature/ui"]);
+    assert_success(&pair);
+    fs::write(dir.path().join("dirty.txt"), "local work\n").expect("write dirty file");
+
+    let status = zaphod(dir.path(), ["status"]);
+
+    assert_success(&status);
+    assert_stdout_contains(&status, "Worktree: dirty");
+    assert_stdout_contains(
+        &status,
+        "Switch: refused (worktree has uncommitted changes)",
+    );
 }
 
 #[test]

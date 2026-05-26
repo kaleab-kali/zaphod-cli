@@ -1,5 +1,5 @@
 use crate::cli::{Cli, CliCommand};
-use crate::core::{BranchPair, PairError};
+use crate::core::{BranchPair, PairError, PairStatus, StatusError};
 use crate::git::{GitError, GitRepository};
 use crate::metadata::{MetadataError, MetadataStore};
 use std::error::Error;
@@ -10,7 +10,7 @@ pub fn run(cli: Cli) -> Result<(), AppError> {
         CliCommand::Pair { left, right, name } => pair_branches(name, left, right),
         CliCommand::List => list_pairs(),
         CliCommand::Unpair { name } => unpair_branches(&name),
-        CliCommand::Status { .. } => Err(AppError::NotImplemented { command: "status" }),
+        CliCommand::Status { json, name } => show_status(&name, json),
         CliCommand::Switch { .. } => Err(AppError::NotImplemented { command: "switch" }),
     }
 }
@@ -72,6 +72,58 @@ fn unpair_branches(name: &str) -> Result<(), AppError> {
     Ok(())
 }
 
+fn show_status(name: &str, json: bool) -> Result<(), AppError> {
+    let status = load_pair_status(name)?;
+
+    if json {
+        println!("{}", serde_json::to_string_pretty(&status)?);
+    } else {
+        print_status(&status);
+    }
+
+    Ok(())
+}
+
+fn load_pair_status(name: &str) -> Result<PairStatus, AppError> {
+    let repository = GitRepository::discover(".")?;
+    let store = MetadataStore::for_repository(&repository);
+    let pairs = store.load()?;
+    let pair = pairs.get(name).ok_or_else(|| AppError::PairNotFound {
+        name: name.to_owned(),
+    })?;
+    let current = repository.current_branch()?;
+    let is_dirty = repository.is_dirty()?;
+
+    PairStatus::new(
+        pair,
+        current,
+        is_dirty,
+        repository.is_merge_in_progress(),
+        repository.is_rebase_in_progress(),
+    )
+    .map_err(AppError::from)
+}
+
+fn print_status(status: &PairStatus) {
+    println!("Pair: {}", status.pair);
+    println!("Current: {}", status.current);
+    println!("Other: {}", status.other);
+    println!("Worktree: {}", status.worktree);
+    println!("Git state: {}", status.git_state);
+
+    if status.switch_allowed {
+        println!("Switch: allowed");
+    } else {
+        let reasons = status
+            .refusal_reasons
+            .iter()
+            .map(ToString::to_string)
+            .collect::<Vec<_>>()
+            .join("; ");
+        println!("Switch: refused ({reasons})");
+    }
+}
+
 fn ensure_branch_exists(repository: &GitRepository, branch: &str) -> Result<(), AppError> {
     if repository.branch_exists(branch)? {
         return Ok(());
@@ -90,6 +142,8 @@ pub enum AppError {
     NotImplemented { command: &'static str },
     Pair { source: PairError },
     PairNotFound { name: String },
+    Serialize { source: serde_json::Error },
+    Status { source: StatusError },
 }
 
 impl Display for AppError {
@@ -106,6 +160,8 @@ impl Display for AppError {
             }
             Self::Pair { source } => Display::fmt(source, formatter),
             Self::PairNotFound { name } => write!(formatter, "pair '{name}' was not found"),
+            Self::Serialize { source } => Display::fmt(source, formatter),
+            Self::Status { source } => Display::fmt(source, formatter),
         }
     }
 }
@@ -116,6 +172,8 @@ impl Error for AppError {
             Self::Git { source } => Some(source),
             Self::Metadata { source } => Some(source),
             Self::Pair { source } => Some(source),
+            Self::Serialize { source } => Some(source),
+            Self::Status { source } => Some(source),
             Self::BranchNotFound { .. }
             | Self::NotImplemented { .. }
             | Self::PairNotFound { .. } => None,
@@ -138,5 +196,17 @@ impl From<MetadataError> for AppError {
 impl From<PairError> for AppError {
     fn from(source: PairError) -> Self {
         Self::Pair { source }
+    }
+}
+
+impl From<serde_json::Error> for AppError {
+    fn from(source: serde_json::Error) -> Self {
+        Self::Serialize { source }
+    }
+}
+
+impl From<StatusError> for AppError {
+    fn from(source: StatusError) -> Self {
+        Self::Status { source }
     }
 }
