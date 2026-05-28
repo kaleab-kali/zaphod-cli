@@ -27,6 +27,8 @@ and this project intends to follow semantic versioning once releases begin.
 
 ### Changed
 
+- Metadata saves now use atomic file replacement to avoid partially written
+  pair metadata.
 - `pair` now validates branch names with Git's branch-name rules before looking
   up or storing a pair.
 - README documentation now shows the `status --json` shape and known refusal

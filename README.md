@@ -315,6 +315,9 @@ This keeps pair metadata local to the repository and avoids changing global Git
 configuration. The metadata format is TOML so it stays readable and easy to
 debug.
 
+Metadata saves use atomic file replacement so interrupted writes do not leave
+`.git/zaphod/pairs.toml` partially written.
+
 ## Development
 
 Zaphod is a Rust CLI using:
