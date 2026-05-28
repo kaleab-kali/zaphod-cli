@@ -17,6 +17,7 @@ and this project intends to follow semantic versioning once releases begin.
 - Branch pair metadata stored under `.git/zaphod/pairs.toml`.
 - `pair`, `list`, and `unpair` commands.
 - `status` command with plain text and JSON output.
+- JSON output for `list`.
 - `switch` command with dirty-worktree and in-progress Git operation refusals.
 - `doctor` command for read-only repository and metadata diagnostics.
 - `completions` command for shell completion generation.
