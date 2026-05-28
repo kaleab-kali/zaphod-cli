@@ -49,6 +49,10 @@ pub enum CliCommand {
 
     /// Switch to the other branch in a pair.
     Switch {
+        /// Show the switch target without changing branches.
+        #[arg(long)]
+        dry_run: bool,
+
         /// Pair name.
         #[arg(long, default_value = "default")]
         name: String,
@@ -190,7 +194,21 @@ mod tests {
         assert_eq!(
             cli.command,
             CliCommand::Switch {
+                dry_run: false,
                 name: "review".to_owned(),
+            }
+        );
+    }
+
+    #[test]
+    fn parses_switch_dry_run_flag() {
+        let cli = Cli::parse_from(["zaphod", "switch", "--dry-run"]);
+
+        assert_eq!(
+            cli.command,
+            CliCommand::Switch {
+                dry_run: true,
+                name: "default".to_owned(),
             }
         );
     }
