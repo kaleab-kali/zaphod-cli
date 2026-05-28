@@ -127,3 +127,14 @@ fn pair_rejects_missing_branch() {
     assert!(!output.status.success());
     assert_stderr_contains(&output, "branch 'missing' was not found");
 }
+
+#[test]
+fn pair_rejects_invalid_branch_name() {
+    let dir = TestDir::new("zaphod-cli-metadata");
+    init_repo_with_pair_branches(dir.path());
+
+    let output = zaphod(dir.path(), ["pair", "feature/api", "feature..ui"]);
+
+    assert!(!output.status.success());
+    assert_stderr_contains(&output, "branch name 'feature..ui' is invalid");
+}
