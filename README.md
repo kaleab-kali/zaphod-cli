@@ -329,13 +329,16 @@ cargo build --release
 The binary will be written to `target/release/zaphod` on Unix-like systems and
 `target/release/zaphod.exe` on Windows.
 
-The release workflow builds binary artifacts for Linux, macOS, and Windows when
-a `v*` tag is pushed:
+The release workflow builds binary artifacts for Linux, macOS, and Windows and
+publishes them as GitHub Release assets when a `v*` tag is pushed:
 
 ```sh
 git tag v0.1.0
 git push origin v0.1.0
 ```
+
+Pull requests that touch release-critical files validate the release build
+without publishing a GitHub Release.
 
 Before tagging a release, run the full quality gate and manually test the
 release binary in a temporary Git repository.
