@@ -1,8 +1,10 @@
 use crate::core::BranchPairs;
 use crate::git::GitRepository;
+use atomic_write_file::AtomicWriteFile;
 use std::error::Error;
 use std::fmt::{self, Display, Formatter};
 use std::fs;
+use std::io::Write;
 use std::path::{Path, PathBuf};
 
 #[derive(Debug, Clone)]
@@ -56,7 +58,17 @@ impl MetadataStore {
 
         let contents =
             toml::to_string_pretty(pairs).map_err(|source| MetadataError::Encode { source })?;
-        fs::write(&self.path, contents).map_err(|source| MetadataError::Write {
+        let mut file =
+            AtomicWriteFile::open(&self.path).map_err(|source| MetadataError::Write {
+                path: self.path.clone(),
+                source,
+            })?;
+        file.write_all(contents.as_bytes())
+            .map_err(|source| MetadataError::Write {
+                path: self.path.clone(),
+                source,
+            })?;
+        file.commit().map_err(|source| MetadataError::Write {
             path: self.path.clone(),
             source,
         })
@@ -204,5 +216,35 @@ mod tests {
 
         let loaded = store.load().expect("load pairs");
         assert_eq!(loaded, pairs);
+    }
+
+    #[test]
+    fn save_replaces_existing_metadata() {
+        let dir = TestDir::new();
+        let store = MetadataStore::at_path(dir.path().join("zaphod").join("pairs.toml"));
+        let mut first = BranchPairs::default();
+        first.upsert(
+            BranchPair::new(
+                "default".to_owned(),
+                "feature/api".to_owned(),
+                "feature/ui".to_owned(),
+            )
+            .expect("valid pair"),
+        );
+        let mut second = BranchPairs::default();
+        second.upsert(
+            BranchPair::new(
+                "default".to_owned(),
+                "main".to_owned(),
+                "feature/search".to_owned(),
+            )
+            .expect("valid pair"),
+        );
+
+        store.save(&first).expect("save first pairs");
+        store.save(&second).expect("replace pairs");
+
+        let loaded = store.load().expect("load pairs");
+        assert_eq!(loaded, second);
     }
 }
