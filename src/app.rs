@@ -13,6 +13,7 @@ pub fn run(cli: Cli) -> Result<(), AppError> {
         CliCommand::Pair { left, right, name } => pair_branches(name, left, right),
         CliCommand::List { json } => list_pairs(json),
         CliCommand::Unpair { name } => unpair_branches(&name),
+        CliCommand::Rename { old, new } => rename_pair(&old, &new),
         CliCommand::Status { json, name } => show_status(&name, json),
         CliCommand::Switch { name } => switch_branches(&name),
         CliCommand::Doctor => run_doctor(),
@@ -88,6 +89,34 @@ fn unpair_branches(name: &str) -> Result<(), AppError> {
     println!(
         "Removed pair '{}': {} <-> {}",
         removed.name, removed.left, removed.right
+    );
+
+    Ok(())
+}
+
+fn rename_pair(old_name: &str, new_name: &str) -> Result<(), AppError> {
+    let repository = GitRepository::discover(".")?;
+    let store = MetadataStore::for_repository(&repository);
+    let mut pairs = store.load()?;
+
+    if old_name != new_name && pairs.get(new_name).is_some() {
+        return Err(AppError::PairAlreadyExists {
+            name: new_name.to_owned(),
+        });
+    }
+
+    let pair = pairs
+        .remove(old_name)
+        .ok_or_else(|| AppError::PairNotFound {
+            name: old_name.to_owned(),
+        })?;
+    let renamed = BranchPair::new(new_name.to_owned(), pair.left, pair.right)?;
+    pairs.upsert(renamed.clone());
+    store.save(&pairs)?;
+
+    println!(
+        "Renamed pair '{}' to '{}': {} <-> {}",
+        old_name, renamed.name, renamed.left, renamed.right
     );
 
     Ok(())
@@ -330,6 +359,7 @@ pub enum AppError {
     InvalidBranchName { branch: String },
     Metadata { source: MetadataError },
     Pair { source: PairError },
+    PairAlreadyExists { name: String },
     PairNotFound { name: String },
     Serialize { source: serde_json::Error },
     Status { source: StatusError },
@@ -347,6 +377,7 @@ impl Display for AppError {
             }
             Self::Metadata { source } => Display::fmt(source, formatter),
             Self::Pair { source } => Display::fmt(source, formatter),
+            Self::PairAlreadyExists { name } => write!(formatter, "pair '{name}' already exists"),
             Self::PairNotFound { name } => write!(formatter, "pair '{name}' was not found"),
             Self::Serialize { source } => Display::fmt(source, formatter),
             Self::Status { source } => Display::fmt(source, formatter),
@@ -373,6 +404,7 @@ impl Error for AppError {
             Self::BranchNotFound { .. }
             | Self::DoctorFailed
             | Self::InvalidBranchName { .. }
+            | Self::PairAlreadyExists { .. }
             | Self::PairNotFound { .. }
             | Self::SwitchRefused { .. } => None,
         }
@@ -385,6 +417,7 @@ impl AppError {
             Self::BranchNotFound { .. }
             | Self::InvalidBranchName { .. }
             | Self::Pair { .. }
+            | Self::PairAlreadyExists { .. }
             | Self::PairNotFound { .. }
             | Self::Status { .. } => 2,
             Self::SwitchRefused { .. } => 3,
@@ -404,6 +437,7 @@ impl AppError {
             Self::InvalidBranchName { .. } => "invalid_branch_name",
             Self::Metadata { .. } => "metadata_error",
             Self::Pair { .. } => "pair_error",
+            Self::PairAlreadyExists { .. } => "pair_already_exists",
             Self::PairNotFound { .. } => "pair_not_found",
             Self::Serialize { .. } => "serialize_error",
             Self::Status { .. } => "status_error",
