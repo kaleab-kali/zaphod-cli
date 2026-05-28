@@ -390,6 +390,21 @@ impl AppError {
             Self::Git { .. } | Self::Metadata { .. } | Self::Serialize { .. } => 1,
         }
     }
+
+    pub fn kind(&self) -> &'static str {
+        match self {
+            Self::BranchNotFound { .. } => "branch_not_found",
+            Self::DoctorFailed => "doctor_failed",
+            Self::Git { source } => source.kind(),
+            Self::InvalidBranchName { .. } => "invalid_branch_name",
+            Self::Metadata { .. } => "metadata_error",
+            Self::Pair { .. } => "pair_error",
+            Self::PairNotFound { .. } => "pair_not_found",
+            Self::Serialize { .. } => "serialize_error",
+            Self::Status { .. } => "status_error",
+            Self::SwitchRefused { .. } => "switch_refused",
+        }
+    }
 }
 
 impl From<GitError> for AppError {

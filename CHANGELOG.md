@@ -25,6 +25,7 @@ and this project intends to follow semantic versioning once releases begin.
 - GitHub Actions workflow for release binary artifacts.
 - GitHub Release publishing for tagged release binary artifacts.
 - Stable app-level exit codes for scripting.
+- `--json-errors` flag for machine-readable app-level errors on stderr.
 
 ### Changed
 

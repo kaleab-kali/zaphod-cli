@@ -298,6 +298,18 @@ Zaphod uses stable app-level exit codes for scripts:
 4  doctor found repository, metadata, or pair health problems
 ```
 
+Use `--json-errors` to emit app-level failures as JSON on stderr:
+
+```sh
+zaphod --json-errors switch
+```
+
+Example error output:
+
+```json
+{"error":{"exit_code":3,"kind":"switch_refused","message":"refusing to switch: worktree has uncommitted changes"}}
+```
+
 ## Demo Transcript
 
 ```text
