@@ -85,6 +85,101 @@ fn pair_list_and_unpair_update_repo_metadata() {
 }
 
 #[test]
+fn rename_updates_pair_name() {
+    let dir = TestDir::new("zaphod-cli-metadata");
+    init_repo_with_pair_branches(dir.path());
+    let pair = zaphod(dir.path(), ["pair", "feature/api", "feature/ui"]);
+    assert_success(&pair);
+
+    let rename = zaphod(dir.path(), ["rename", "default", "api"]);
+
+    assert_success(&rename);
+    assert_stdout_contains(
+        &rename,
+        "Renamed pair 'default' to 'api': feature/api <-> feature/ui",
+    );
+
+    let list = zaphod(dir.path(), ["list", "--json"]);
+    assert_success(&list);
+    let pairs: serde_json::Value = serde_json::from_slice(&list.stdout).expect("list json");
+    assert_eq!(
+        pairs,
+        json!([
+            {
+                "name": "api",
+                "left": "feature/api",
+                "right": "feature/ui",
+            }
+        ])
+    );
+
+    let renamed_status = zaphod(dir.path(), ["status", "--name", "api"]);
+    assert_success(&renamed_status);
+    assert_stdout_contains(&renamed_status, "Pair: api");
+
+    let default_status = zaphod(dir.path(), ["status"]);
+    assert!(!default_status.status.success());
+    assert_eq!(default_status.status.code(), Some(2));
+    assert_stderr_contains(&default_status, "pair 'default' was not found");
+}
+
+#[test]
+fn rename_rejects_existing_pair_name() {
+    let dir = TestDir::new("zaphod-cli-metadata");
+    init_repo_with_pair_branches(dir.path());
+    let default_pair = zaphod(dir.path(), ["pair", "feature/api", "feature/ui"]);
+    assert_success(&default_pair);
+    let api_pair = zaphod(dir.path(), ["pair", "main", "feature/ui", "--name", "api"]);
+    assert_success(&api_pair);
+
+    let rename = zaphod(dir.path(), ["rename", "default", "api"]);
+
+    assert!(!rename.status.success());
+    assert_eq!(rename.status.code(), Some(2));
+    assert_stderr_contains(&rename, "pair 'api' already exists");
+
+    let list = zaphod(dir.path(), ["list", "--json"]);
+    assert_success(&list);
+    let pairs: serde_json::Value = serde_json::from_slice(&list.stdout).expect("list json");
+    assert_eq!(
+        pairs,
+        json!([
+            {
+                "name": "api",
+                "left": "main",
+                "right": "feature/ui",
+            },
+            {
+                "name": "default",
+                "left": "feature/api",
+                "right": "feature/ui",
+            }
+        ])
+    );
+}
+
+#[test]
+fn rename_rejects_invalid_new_pair_name() {
+    let dir = TestDir::new("zaphod-cli-metadata");
+    init_repo_with_pair_branches(dir.path());
+    let pair = zaphod(dir.path(), ["pair", "feature/api", "feature/ui"]);
+    assert_success(&pair);
+
+    let rename = zaphod(dir.path(), ["rename", "default", "bad/name"]);
+
+    assert!(!rename.status.success());
+    assert_eq!(rename.status.code(), Some(2));
+    assert_stderr_contains(
+        &rename,
+        "pair name 'bad/name' must contain only letters, numbers, '.', '_', or '-'",
+    );
+
+    let default_status = zaphod(dir.path(), ["status"]);
+    assert_success(&default_status);
+    assert_stdout_contains(&default_status, "Pair: default");
+}
+
+#[test]
 fn status_reports_dirty_worktree_refusal() {
     let dir = TestDir::new("zaphod-cli-metadata");
     init_repo_with_pair_branches(dir.path());

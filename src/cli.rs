@@ -57,6 +57,15 @@ pub enum CliCommand {
         name: String,
     },
 
+    /// Rename a branch pair.
+    Rename {
+        /// Current pair name.
+        old: String,
+
+        /// New pair name.
+        new: String,
+    },
+
     /// List all branch pairs in the current repository.
     List {
         /// Emit machine-readable JSON.
@@ -131,6 +140,19 @@ mod tests {
         let cli = Cli::parse_from(["zaphod", "list", "--json"]);
 
         assert_eq!(cli.command, CliCommand::List { json: true });
+    }
+
+    #[test]
+    fn parses_rename_command() {
+        let cli = Cli::parse_from(["zaphod", "rename", "default", "api"]);
+
+        assert_eq!(
+            cli.command,
+            CliCommand::Rename {
+                old: "default".to_owned(),
+                new: "api".to_owned(),
+            }
+        );
     }
 
     #[test]

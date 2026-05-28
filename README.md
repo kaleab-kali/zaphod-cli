@@ -15,7 +15,7 @@ Zaphod is in early development. The current `0.1.x` CLI can:
 - Pair two branches in repo-local metadata.
 - Show the active pair status.
 - Switch to the paired branch.
-- List and remove branch pairs.
+- List, rename, and remove branch pairs.
 - Refuse unsafe switches when the worktree is dirty or Git is mid-operation.
 - Emit JSON status for scripts.
 - Diagnose repository, metadata, and branch-pair health.
@@ -250,6 +250,17 @@ For scripts, use JSON output:
 ```sh
 zaphod list --json
 ```
+
+### `zaphod rename <old> <new>`
+
+Rename a branch pair label without changing either Git branch:
+
+```sh
+zaphod rename default api
+```
+
+Zaphod refuses to overwrite an existing pair name. Pair names must contain only
+letters, numbers, `.`, `_`, and `-`.
 
 ### `zaphod doctor`
 
