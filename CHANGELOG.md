@@ -11,6 +11,7 @@ and this project intends to follow semantic versioning once releases begin.
 
 - `rename` command for changing branch-pair labels without changing Git
   branches.
+- `status --all` output for auditing every configured branch pair.
 
 ## 0.1.0 - 2026-05-28
 

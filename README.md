@@ -187,10 +187,17 @@ Show the active pair status:
 zaphod status
 ```
 
+To inspect every configured pair in the repository, use `--all`:
+
+```sh
+zaphod status --all
+```
+
 For scripts, use JSON output:
 
 ```sh
 zaphod status --json
+zaphod status --all --json
 ```
 
 JSON fields use script-friendly names:
@@ -224,6 +231,11 @@ When switching is refused, `switch_allowed` is `false` and
 
 Known refusal reasons are `dirty_worktree`, `merge_in_progress`,
 `rebase_in_progress`, and `target_branch_missing`.
+
+`status --all --json` returns an array. Each item includes the pair's `left`
+and `right` branch names, whether the pair is `active` for the current branch,
+branch existence booleans, and switch availability details. Inactive pairs use
+`current_branch_not_paired` as the refusal reason.
 
 ### `zaphod switch`
 

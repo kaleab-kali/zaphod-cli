@@ -38,6 +38,10 @@ pub enum CliCommand {
         #[arg(long)]
         json: bool,
 
+        /// Show status for every configured pair.
+        #[arg(long, conflicts_with = "name")]
+        all: bool,
+
         /// Pair name.
         #[arg(long, default_value = "default")]
         name: String,
@@ -116,9 +120,32 @@ mod tests {
             cli.command,
             CliCommand::Status {
                 json: true,
+                all: false,
                 name: "default".to_owned(),
             }
         );
+    }
+
+    #[test]
+    fn parses_status_all_flag() {
+        let cli = Cli::parse_from(["zaphod", "status", "--all"]);
+
+        assert_eq!(
+            cli.command,
+            CliCommand::Status {
+                json: false,
+                all: true,
+                name: "default".to_owned(),
+            }
+        );
+    }
+
+    #[test]
+    fn status_all_conflicts_with_name() {
+        let error = Cli::try_parse_from(["zaphod", "status", "--all", "--name", "api"])
+            .expect_err("reject conflicting status selectors");
+
+        assert_eq!(error.kind(), clap::error::ErrorKind::ArgumentConflict);
     }
 
     #[test]
@@ -130,6 +157,7 @@ mod tests {
             cli.command,
             CliCommand::Status {
                 json: false,
+                all: false,
                 name: "default".to_owned(),
             }
         );

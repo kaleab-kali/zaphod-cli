@@ -1,9 +1,12 @@
 use crate::cli::{Cli, CliCommand};
-use crate::core::{BranchPair, PairError, PairStatus, RefusalReason, StatusError};
+use crate::core::{
+    BranchPair, GitState, PairError, PairStatus, RefusalReason, StatusError, WorktreeStatus,
+};
 use crate::git::{GitError, GitRepository};
 use crate::metadata::{MetadataError, MetadataStore};
 use clap::CommandFactory;
 use clap_complete::Shell;
+use serde::Serialize;
 use std::error::Error;
 use std::fmt::{self, Display, Formatter};
 use std::io;
@@ -14,7 +17,13 @@ pub fn run(cli: Cli) -> Result<(), AppError> {
         CliCommand::List { json } => list_pairs(json),
         CliCommand::Unpair { name } => unpair_branches(&name),
         CliCommand::Rename { old, new } => rename_pair(&old, &new),
-        CliCommand::Status { json, name } => show_status(&name, json),
+        CliCommand::Status { json, all, name } => {
+            if all {
+                show_all_statuses(json)
+            } else {
+                show_status(&name, json)
+            }
+        }
         CliCommand::Switch { name } => switch_branches(&name),
         CliCommand::Doctor => run_doctor(),
         CliCommand::Completions { shell } => generate_completions(shell),
@@ -129,6 +138,48 @@ fn show_status(name: &str, json: bool) -> Result<(), AppError> {
         println!("{}", serde_json::to_string_pretty(&context.status)?);
     } else {
         print_status(&context.status);
+    }
+
+    Ok(())
+}
+
+fn show_all_statuses(json: bool) -> Result<(), AppError> {
+    let repository = GitRepository::discover(".")?;
+    let store = MetadataStore::for_repository(&repository);
+    let pairs = store.load()?;
+
+    if pairs.is_empty() {
+        if json {
+            println!("[]");
+        } else {
+            println!("No branch pairs configured.");
+        }
+        return Ok(());
+    }
+
+    let current = repository.current_branch()?;
+    let is_dirty = repository.is_dirty()?;
+    let is_merge_in_progress = repository.is_merge_in_progress();
+    let is_rebase_in_progress = repository.is_rebase_in_progress();
+    let reports = pairs
+        .pairs()
+        .iter()
+        .map(|pair| {
+            build_status_report(
+                &repository,
+                pair,
+                &current,
+                is_dirty,
+                is_merge_in_progress,
+                is_rebase_in_progress,
+            )
+        })
+        .collect::<Result<Vec<_>, AppError>>()?;
+
+    if json {
+        println!("{}", serde_json::to_string_pretty(&reports)?);
+    } else {
+        print_status_reports(&reports);
     }
 
     Ok(())
@@ -306,6 +357,60 @@ fn diagnose_pair_branches(
     }
 }
 
+fn build_status_report(
+    repository: &GitRepository,
+    pair: &BranchPair,
+    current: &str,
+    is_dirty: bool,
+    is_merge_in_progress: bool,
+    is_rebase_in_progress: bool,
+) -> Result<PairStatusReport, AppError> {
+    let left_exists = repository.branch_exists(&pair.left)?;
+    let right_exists = repository.branch_exists(&pair.right)?;
+    let other = pair.other_branch(current).map(str::to_owned);
+    let worktree = WorktreeStatus::from_dirty(is_dirty);
+    let git_state = GitState::from_repository_state(is_merge_in_progress, is_rebase_in_progress);
+    let mut refusal_reasons = Vec::new();
+
+    if let Some(other) = &other {
+        if is_dirty {
+            refusal_reasons.push(StatusReportRefusalReason::DirtyWorktree);
+        }
+        if is_merge_in_progress {
+            refusal_reasons.push(StatusReportRefusalReason::MergeInProgress);
+        }
+        if is_rebase_in_progress {
+            refusal_reasons.push(StatusReportRefusalReason::RebaseInProgress);
+        }
+
+        let target_branch_exists = if other == &pair.left {
+            left_exists
+        } else {
+            right_exists
+        };
+        if !target_branch_exists {
+            refusal_reasons.push(StatusReportRefusalReason::TargetBranchMissing);
+        }
+    } else {
+        refusal_reasons.push(StatusReportRefusalReason::CurrentBranchNotPaired);
+    }
+
+    Ok(PairStatusReport {
+        pair: pair.name.clone(),
+        left: pair.left.clone(),
+        right: pair.right.clone(),
+        current: current.to_owned(),
+        active: other.is_some(),
+        other,
+        left_exists,
+        right_exists,
+        worktree,
+        git_state,
+        switch_allowed: refusal_reasons.is_empty(),
+        refusal_reasons,
+    })
+}
+
 fn print_status(status: &PairStatus) {
     println!("Pair: {}", status.pair);
     println!("Current: {}", status.current);
@@ -326,9 +431,104 @@ fn print_status(status: &PairStatus) {
     }
 }
 
+fn print_status_reports(reports: &[PairStatusReport]) {
+    for (index, report) in reports.iter().enumerate() {
+        if index > 0 {
+            println!();
+        }
+
+        println!("Pair: {}", report.pair);
+        println!("Branches: {} <-> {}", report.left, report.right);
+        println!(
+            "Branch health: {}",
+            format_branch_health(
+                report.left_exists,
+                report.right_exists,
+                &report.left,
+                &report.right
+            )
+        );
+        println!("Current: {}", report.current);
+
+        if let Some(other) = &report.other {
+            println!("Other: {other}");
+        } else {
+            println!("Other: unavailable");
+        }
+
+        println!("Worktree: {}", report.worktree);
+        println!("Git state: {}", report.git_state);
+
+        if report.switch_allowed {
+            println!("Switch: allowed");
+        } else {
+            let reasons = report
+                .refusal_reasons
+                .iter()
+                .map(ToString::to_string)
+                .collect::<Vec<_>>()
+                .join("; ");
+            if report.active {
+                println!("Switch: refused ({reasons})");
+            } else {
+                println!("Switch: not available ({reasons})");
+            }
+        }
+    }
+}
+
+fn format_branch_health(left_exists: bool, right_exists: bool, left: &str, right: &str) -> String {
+    match (left_exists, right_exists) {
+        (true, true) => "ok".to_owned(),
+        (false, true) => format!("missing left branch: {left}"),
+        (true, false) => format!("missing right branch: {right}"),
+        (false, false) => format!("missing both branches: {left}, {right}"),
+    }
+}
+
 struct StatusContext {
     repository: GitRepository,
     status: PairStatus,
+}
+
+#[derive(Debug, Serialize)]
+struct PairStatusReport {
+    pair: String,
+    left: String,
+    right: String,
+    current: String,
+    active: bool,
+    other: Option<String>,
+    left_exists: bool,
+    right_exists: bool,
+    worktree: WorktreeStatus,
+    git_state: GitState,
+    switch_allowed: bool,
+    refusal_reasons: Vec<StatusReportRefusalReason>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "snake_case")]
+enum StatusReportRefusalReason {
+    CurrentBranchNotPaired,
+    DirtyWorktree,
+    MergeInProgress,
+    RebaseInProgress,
+    TargetBranchMissing,
+}
+
+impl Display for StatusReportRefusalReason {
+    fn fmt(&self, formatter: &mut Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::CurrentBranchNotPaired => {
+                write!(formatter, "current branch is not part of pair")
+            }
+            Self::DirtyWorktree => write!(formatter, "worktree has uncommitted changes"),
+            Self::MergeInProgress => write!(formatter, "merge is in progress"),
+            Self::RebaseInProgress => write!(formatter, "rebase is in progress"),
+            Self::TargetBranchMissing => write!(formatter, "target branch is missing"),
+        }
+    }
 }
 
 fn ensure_branch_exists(repository: &GitRepository, branch: &str) -> Result<(), AppError> {

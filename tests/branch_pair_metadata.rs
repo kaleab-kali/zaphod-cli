@@ -180,6 +180,83 @@ fn rename_rejects_invalid_new_pair_name() {
 }
 
 #[test]
+fn status_all_reports_every_pair() {
+    let dir = TestDir::new("zaphod-cli-metadata");
+    init_repo_with_pair_branches(dir.path());
+    let default_pair = zaphod(dir.path(), ["pair", "feature/api", "feature/ui"]);
+    assert_success(&default_pair);
+    let api_pair = zaphod(dir.path(), ["pair", "main", "feature/ui", "--name", "api"]);
+    assert_success(&api_pair);
+
+    let status = zaphod(dir.path(), ["status", "--all"]);
+
+    assert_success(&status);
+    assert_stdout_contains(&status, "Pair: api");
+    assert_stdout_contains(&status, "Branches: main <-> feature/ui");
+    assert_stdout_contains(
+        &status,
+        "Switch: not available (current branch is not part of pair)",
+    );
+    assert_stdout_contains(&status, "Pair: default");
+    assert_stdout_contains(&status, "Other: feature/ui");
+    assert_stdout_contains(&status, "Switch: allowed");
+
+    let json_status = zaphod(dir.path(), ["status", "--all", "--json"]);
+    assert_success(&json_status);
+    let statuses: serde_json::Value =
+        serde_json::from_slice(&json_status.stdout).expect("status all json");
+    assert_eq!(
+        statuses,
+        json!([
+            {
+                "pair": "api",
+                "left": "main",
+                "right": "feature/ui",
+                "current": "feature/api",
+                "active": false,
+                "other": null,
+                "left_exists": true,
+                "right_exists": true,
+                "worktree": "clean",
+                "git_state": "ready",
+                "switch_allowed": false,
+                "refusal_reasons": ["current_branch_not_paired"],
+            },
+            {
+                "pair": "default",
+                "left": "feature/api",
+                "right": "feature/ui",
+                "current": "feature/api",
+                "active": true,
+                "other": "feature/ui",
+                "left_exists": true,
+                "right_exists": true,
+                "worktree": "clean",
+                "git_state": "ready",
+                "switch_allowed": true,
+                "refusal_reasons": [],
+            }
+        ])
+    );
+}
+
+#[test]
+fn status_all_reports_empty_metadata() {
+    let dir = TestDir::new("zaphod-cli-metadata");
+    init_repo_with_pair_branches(dir.path());
+
+    let status = zaphod(dir.path(), ["status", "--all"]);
+    assert_success(&status);
+    assert_stdout_contains(&status, "No branch pairs configured.");
+
+    let json_status = zaphod(dir.path(), ["status", "--all", "--json"]);
+    assert_success(&json_status);
+    let statuses: serde_json::Value =
+        serde_json::from_slice(&json_status.stdout).expect("empty status all json");
+    assert_eq!(statuses, json!([]));
+}
+
+#[test]
 fn status_reports_dirty_worktree_refusal() {
     let dir = TestDir::new("zaphod-cli-metadata");
     init_repo_with_pair_branches(dir.path());
