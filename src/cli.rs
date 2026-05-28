@@ -82,7 +82,11 @@ pub enum CliCommand {
     },
 
     /// Diagnose Git repository state and Zaphod metadata.
-    Doctor,
+    Doctor {
+        /// Emit machine-readable JSON.
+        #[arg(long)]
+        json: bool,
+    },
 
     /// Generate shell completion scripts.
     Completions {
@@ -224,6 +228,13 @@ mod tests {
     fn parses_doctor_command() {
         let cli = Cli::parse_from(["zaphod", "doctor"]);
 
-        assert_eq!(cli.command, CliCommand::Doctor);
+        assert_eq!(cli.command, CliCommand::Doctor { json: false });
+    }
+
+    #[test]
+    fn parses_doctor_json_flag() {
+        let cli = Cli::parse_from(["zaphod", "doctor", "--json"]);
+
+        assert_eq!(cli.command, CliCommand::Doctor { json: true });
     }
 }
