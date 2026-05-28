@@ -9,7 +9,7 @@ goal is to make one repetitive workflow easier without hiding what is happening.
 
 ## Project Status
 
-Zaphod is in early development. The current CLI can:
+Zaphod is in early development. The current `0.1.x` CLI can:
 
 - Detect the current Git repository.
 - Pair two branches in repo-local metadata.
@@ -20,7 +20,8 @@ Zaphod is in early development. The current CLI can:
 - Emit JSON status for scripts.
 - Generate shell completions.
 
-Until `v0.1` is tagged, command names and output may change.
+Until Zaphod reaches `1.0`, command names and output may change between minor
+versions.
 
 ## Why Zaphod?
 
@@ -333,7 +334,7 @@ The release workflow builds binary artifacts for Linux, macOS, and Windows and
 publishes them as GitHub Release assets when a `v*` tag is pushed:
 
 ```sh
-git tag v0.1.0
+git tag -a v0.1.0 -m "v0.1.0"
 git push origin v0.1.0
 ```
 
