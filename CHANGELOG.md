@@ -7,6 +7,8 @@ and this project intends to follow semantic versioning once releases begin.
 
 ## Unreleased
 
+## 0.1.0 - 2026-05-28
+
 ### Added
 
 - Initial Rust binary scaffold.
