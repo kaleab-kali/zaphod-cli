@@ -7,6 +7,8 @@ and this project intends to follow semantic versioning once releases begin.
 
 ## Unreleased
 
+## 0.1.1 - 2026-05-28
+
 ### Added
 
 - `rename` command for changing branch-pair labels without changing Git
