@@ -94,6 +94,25 @@ fn switch_rejects_merge_in_progress() {
 }
 
 #[test]
+fn switch_dry_run_keeps_safety_refusals() {
+    let dir = TestDir::new("zaphod-cli-safety");
+    init_repo_with_pair_branches(dir.path());
+    let pair = zaphod(dir.path(), ["pair", "feature/api", "feature/ui"]);
+    assert_success(&pair);
+    fs::write(dir.path().join("dirty.txt"), "local work\n").expect("write dirty file");
+
+    let output = zaphod(dir.path(), ["switch", "--dry-run"]);
+
+    assert!(!output.status.success());
+    assert_eq!(output.status.code(), Some(3));
+    assert_stderr_contains(
+        &output,
+        "refusing to switch: worktree has uncommitted changes",
+    );
+    assert_eq!(current_branch(dir.path()), "feature/api");
+}
+
+#[test]
 fn switch_rejects_rebase_in_progress() {
     let dir = TestDir::new("zaphod-cli-safety");
     init_repo_with_pair_branches(dir.path());

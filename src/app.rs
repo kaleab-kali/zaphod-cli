@@ -24,7 +24,7 @@ pub fn run(cli: Cli) -> Result<(), AppError> {
                 show_status(&name, json)
             }
         }
-        CliCommand::Switch { name } => switch_branches(&name),
+        CliCommand::Switch { dry_run, name } => switch_branches(&name, dry_run),
         CliCommand::Doctor => run_doctor(),
         CliCommand::Completions { shell } => generate_completions(shell),
     }
@@ -185,7 +185,7 @@ fn show_all_statuses(json: bool) -> Result<(), AppError> {
     Ok(())
 }
 
-fn switch_branches(name: &str) -> Result<(), AppError> {
+fn switch_branches(name: &str, dry_run: bool) -> Result<(), AppError> {
     let context = load_status_context(name)?;
 
     if !context.status.switch_allowed {
@@ -194,8 +194,15 @@ fn switch_branches(name: &str) -> Result<(), AppError> {
         });
     }
 
-    context.repository.switch_branch(&context.status.other)?;
+    if dry_run {
+        println!(
+            "Would switch pair '{}': {} -> {}",
+            context.status.pair, context.status.current, context.status.other
+        );
+        return Ok(());
+    }
 
+    context.repository.switch_branch(&context.status.other)?;
     println!(
         "Switched pair '{}': {} -> {}",
         context.status.pair, context.status.current, context.status.other

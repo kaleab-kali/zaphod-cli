@@ -292,6 +292,23 @@ fn switch_moves_to_other_branch_when_clean() {
 }
 
 #[test]
+fn switch_dry_run_reports_target_without_switching() {
+    let dir = TestDir::new("zaphod-cli-metadata");
+    init_repo_with_pair_branches(dir.path());
+    let pair = zaphod(dir.path(), ["pair", "feature/api", "feature/ui"]);
+    assert_success(&pair);
+
+    let output = zaphod(dir.path(), ["switch", "--dry-run"]);
+
+    assert_success(&output);
+    assert_stdout_contains(
+        &output,
+        "Would switch pair 'default': feature/api -> feature/ui",
+    );
+    assert_eq!(current_branch(dir.path()), "feature/api");
+}
+
+#[test]
 fn switch_refuses_dirty_worktree() {
     let dir = TestDir::new("zaphod-cli-metadata");
     init_repo_with_pair_branches(dir.path());

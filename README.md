@@ -15,6 +15,7 @@ Zaphod is in early development. The current `0.1.x` CLI can:
 - Pair two branches in repo-local metadata.
 - Show the active pair status.
 - Switch to the paired branch.
+- Preview a safe switch without changing branches.
 - List, rename, and remove branch pairs.
 - Refuse unsafe switches when the worktree is dirty or Git is mid-operation.
 - Emit JSON status for scripts.
@@ -248,6 +249,14 @@ zaphod switch
 Zaphod refuses to switch if the worktree is dirty, a merge is in progress, or a
 rebase is in progress. It also refuses when the paired target branch no longer
 exists. Use `zaphod status` to see the current refusal reason before switching.
+
+To preview the target without changing branches, use `--dry-run`:
+
+```sh
+zaphod switch --dry-run
+```
+
+Dry-run mode applies the same safety checks as a real switch.
 
 ### `zaphod list`
 
