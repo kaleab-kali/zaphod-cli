@@ -374,6 +374,24 @@ impl Error for AppError {
     }
 }
 
+impl AppError {
+    pub fn exit_code(&self) -> u8 {
+        match self {
+            Self::BranchNotFound { .. }
+            | Self::InvalidBranchName { .. }
+            | Self::Pair { .. }
+            | Self::PairNotFound { .. }
+            | Self::Status { .. } => 2,
+            Self::SwitchRefused { .. } => 3,
+            Self::DoctorFailed => 4,
+            Self::Git {
+                source: GitError::DetachedHead | GitError::NotRepository,
+            } => 2,
+            Self::Git { .. } | Self::Metadata { .. } | Self::Serialize { .. } => 1,
+        }
+    }
+}
+
 impl From<GitError> for AppError {
     fn from(source: GitError) -> Self {
         Self::Git { source }

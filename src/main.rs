@@ -8,8 +8,9 @@ fn main() -> ExitCode {
     match zaphod_cli::app::run(cli) {
         Ok(()) => ExitCode::SUCCESS,
         Err(error) => {
+            let exit_code = error.exit_code();
             eprintln!("error: {error}");
-            ExitCode::FAILURE
+            ExitCode::from(exit_code)
         }
     }
 }
