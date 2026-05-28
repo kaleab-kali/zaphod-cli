@@ -403,11 +403,26 @@ The binary will be written to `target/release/zaphod` on Unix-like systems and
 `target/release/zaphod.exe` on Windows.
 
 The release workflow builds binary artifacts for Linux, macOS, and Windows and
-publishes them as GitHub Release assets when a `v*` tag is pushed:
+publishes them as GitHub Release assets when a `v*` tag is pushed. Each binary
+is published with a matching `.sha256` checksum file:
 
 ```sh
 git tag -a v0.1.0 -m "v0.1.0"
 git push origin v0.1.0
+```
+
+Verify downloaded release assets before running them:
+
+```sh
+sha256sum -c zaphod-linux.sha256
+shasum -a 256 -c zaphod-macos.sha256
+```
+
+On Windows PowerShell:
+
+```powershell
+Get-FileHash .\zaphod-windows.exe -Algorithm SHA256
+Get-Content .\zaphod-windows.exe.sha256
 ```
 
 Pull requests that touch release-critical files validate the release build
