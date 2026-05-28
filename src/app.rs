@@ -15,6 +15,7 @@ pub fn run(cli: Cli) -> Result<(), AppError> {
         CliCommand::Unpair { name } => unpair_branches(&name),
         CliCommand::Status { json, name } => show_status(&name, json),
         CliCommand::Switch { name } => switch_branches(&name),
+        CliCommand::Doctor => run_doctor(),
         CliCommand::Completions { shell } => generate_completions(shell),
     }
 }
@@ -116,6 +117,102 @@ fn switch_branches(name: &str) -> Result<(), AppError> {
     Ok(())
 }
 
+fn run_doctor() -> Result<(), AppError> {
+    let mut healthy = true;
+
+    match GitRepository::version() {
+        Ok(version) => println!("Git: ok ({version})"),
+        Err(error) => {
+            println!("Git: error ({error})");
+            return Err(AppError::DoctorFailed);
+        }
+    }
+
+    let repository = match GitRepository::discover(".") {
+        Ok(repository) => {
+            println!("Repository: ok ({})", repository.root().display());
+            repository
+        }
+        Err(error) => {
+            println!("Repository: error ({error})");
+            return Err(AppError::DoctorFailed);
+        }
+    };
+
+    println!("Git directory: {}", repository.git_dir().display());
+
+    match repository.current_branch() {
+        Ok(branch) => println!("Current branch: {branch}"),
+        Err(error) => {
+            println!("Current branch: error ({error})");
+            healthy = false;
+        }
+    }
+
+    match repository.is_dirty() {
+        Ok(is_dirty) => println!("Worktree: {}", if is_dirty { "dirty" } else { "clean" }),
+        Err(error) => {
+            println!("Worktree: error ({error})");
+            healthy = false;
+        }
+    }
+
+    println!(
+        "Git state: {}",
+        format_git_state(
+            repository.is_merge_in_progress(),
+            repository.is_rebase_in_progress()
+        )
+    );
+
+    let store = MetadataStore::for_repository(&repository);
+    match store.load() {
+        Ok(pairs) => {
+            println!(
+                "Metadata: ok ({} pair(s), {})",
+                pairs.pairs().len(),
+                store.path().display()
+            );
+
+            if pairs.is_empty() {
+                println!("Pairs: none configured");
+            } else {
+                println!("Pairs:");
+                for pair in pairs.pairs() {
+                    match diagnose_pair_branches(&repository, pair) {
+                        Ok(summary) => {
+                            println!(
+                                "- {}: {} <-> {} [{}]",
+                                pair.name, pair.left, pair.right, summary
+                            );
+                            if summary != "ok" {
+                                healthy = false;
+                            }
+                        }
+                        Err(error) => {
+                            println!(
+                                "- {}: {} <-> {} [error: {}]",
+                                pair.name, pair.left, pair.right, error
+                            );
+                            healthy = false;
+                        }
+                    }
+                }
+            }
+        }
+        Err(error) => {
+            println!("Metadata: error ({error})");
+            healthy = false;
+        }
+    }
+
+    if healthy {
+        Ok(())
+    } else {
+        Err(AppError::DoctorFailed)
+    }
+}
+
 fn load_status_context(name: &str) -> Result<StatusContext, AppError> {
     let repository = GitRepository::discover(".")?;
     let store = MetadataStore::for_repository(&repository);
@@ -144,6 +241,33 @@ fn load_status_context(name: &str) -> Result<StatusContext, AppError> {
     .map_err(AppError::from)?;
 
     Ok(StatusContext { repository, status })
+}
+
+fn format_git_state(is_merge_in_progress: bool, is_rebase_in_progress: bool) -> &'static str {
+    match (is_merge_in_progress, is_rebase_in_progress) {
+        (false, false) => "ready",
+        (true, false) => "merge in progress",
+        (false, true) => "rebase in progress",
+        (true, true) => "merge and rebase in progress",
+    }
+}
+
+fn diagnose_pair_branches(
+    repository: &GitRepository,
+    pair: &BranchPair,
+) -> Result<String, AppError> {
+    let left_exists = repository.branch_exists(&pair.left)?;
+    let right_exists = repository.branch_exists(&pair.right)?;
+
+    match (left_exists, right_exists) {
+        (true, true) => Ok("ok".to_owned()),
+        (false, true) => Ok(format!("missing left branch: {}", pair.left)),
+        (true, false) => Ok(format!("missing right branch: {}", pair.right)),
+        (false, false) => Ok(format!(
+            "missing both branches: {}, {}",
+            pair.left, pair.right
+        )),
+    }
 }
 
 fn print_status(status: &PairStatus) {
@@ -184,6 +308,7 @@ fn ensure_branch_exists(repository: &GitRepository, branch: &str) -> Result<(), 
 #[derive(Debug)]
 pub enum AppError {
     BranchNotFound { branch: String },
+    DoctorFailed,
     Git { source: GitError },
     Metadata { source: MetadataError },
     Pair { source: PairError },
@@ -197,6 +322,7 @@ impl Display for AppError {
     fn fmt(&self, formatter: &mut Formatter<'_>) -> fmt::Result {
         match self {
             Self::BranchNotFound { branch } => write!(formatter, "branch '{branch}' was not found"),
+            Self::DoctorFailed => write!(formatter, "doctor found problems"),
             Self::Git { source } => Display::fmt(source, formatter),
             Self::Metadata { source } => Display::fmt(source, formatter),
             Self::Pair { source } => Display::fmt(source, formatter),
@@ -224,6 +350,7 @@ impl Error for AppError {
             Self::Serialize { source } => Some(source),
             Self::Status { source } => Some(source),
             Self::BranchNotFound { .. }
+            | Self::DoctorFailed
             | Self::PairNotFound { .. }
             | Self::SwitchRefused { .. } => None,
         }

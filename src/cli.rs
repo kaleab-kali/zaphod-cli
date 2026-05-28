@@ -56,6 +56,9 @@ pub enum CliCommand {
     /// List all branch pairs in the current repository.
     List,
 
+    /// Diagnose Git repository state and Zaphod metadata.
+    Doctor,
+
     /// Generate shell completion scripts.
     Completions {
         /// Shell to generate completions for.
@@ -118,5 +121,12 @@ mod tests {
         let cli = Cli::parse_from(["zaphod", "completions", "bash"]);
 
         assert_eq!(cli.command, CliCommand::Completions { shell: Shell::Bash });
+    }
+
+    #[test]
+    fn parses_doctor_command() {
+        let cli = Cli::parse_from(["zaphod", "doctor"]);
+
+        assert_eq!(cli.command, CliCommand::Doctor);
     }
 }

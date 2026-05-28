@@ -12,6 +12,10 @@ pub struct GitRepository {
 }
 
 impl GitRepository {
+    pub fn version() -> Result<String, GitError> {
+        run_git_without_repository(["--version"])
+    }
+
     pub fn discover(start: impl AsRef<Path>) -> Result<Self, GitError> {
         let root = run_git(start.as_ref(), ["rev-parse", "--show-toplevel"])
             .map_err(|_| GitError::NotRepository)?;
@@ -114,6 +118,30 @@ where
 {
     let args = collect_args(args);
     let output = git_output(working_dir, &args)?;
+
+    if !output.status.success() {
+        return Err(GitError::CommandFailed {
+            args: display_args(&args),
+            stderr: String::from_utf8_lossy(&output.stderr).into_owned(),
+        });
+    }
+
+    let stdout =
+        String::from_utf8(output.stdout).map_err(|source| GitError::InvalidOutput { source })?;
+
+    Ok(stdout.trim().to_owned())
+}
+
+fn run_git_without_repository<I, S>(args: I) -> Result<String, GitError>
+where
+    I: IntoIterator<Item = S>,
+    S: AsRef<OsStr>,
+{
+    let args = collect_args(args);
+    let output = Command::new("git")
+        .args(&args)
+        .output()
+        .map_err(|source| GitError::LaunchFailed { source })?;
 
     if !output.status.success() {
         return Err(GitError::CommandFailed {
@@ -255,6 +283,13 @@ mod tests {
         assert!(!repo.is_dirty().expect("dirty status"));
         assert!(repo.branch_exists("main").expect("branch exists"));
         assert!(!repo.branch_exists("missing").expect("branch exists"));
+    }
+
+    #[test]
+    fn version_reads_git_version() {
+        let version = GitRepository::version().expect("git version");
+
+        assert!(version.starts_with("git version "));
     }
 
     fn git<I, S>(working_dir: &Path, args: I)
