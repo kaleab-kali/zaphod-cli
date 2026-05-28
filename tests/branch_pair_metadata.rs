@@ -118,6 +118,33 @@ fn switch_refuses_dirty_worktree() {
 }
 
 #[test]
+fn switch_refusal_can_emit_json_error() {
+    let dir = TestDir::new("zaphod-cli-metadata");
+    init_repo_with_pair_branches(dir.path());
+    let pair = zaphod(dir.path(), ["pair", "feature/api", "feature/ui"]);
+    assert_success(&pair);
+    fs::write(dir.path().join("dirty.txt"), "local work\n").expect("write dirty file");
+
+    let output = zaphod(dir.path(), ["--json-errors", "switch"]);
+
+    assert!(!output.status.success());
+    assert_eq!(output.status.code(), Some(3));
+    let error: serde_json::Value =
+        serde_json::from_slice(&output.stderr).expect("json error output");
+    assert_eq!(
+        error,
+        json!({
+            "error": {
+                "kind": "switch_refused",
+                "message": "refusing to switch: worktree has uncommitted changes",
+                "exit_code": 3,
+            }
+        })
+    );
+    assert_eq!(current_branch(dir.path()), "feature/api");
+}
+
+#[test]
 fn pair_rejects_missing_branch() {
     let dir = TestDir::new("zaphod-cli-metadata");
     init_repo_with_pair_branches(dir.path());

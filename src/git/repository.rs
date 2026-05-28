@@ -117,6 +117,18 @@ impl Error for GitError {
     }
 }
 
+impl GitError {
+    pub fn kind(&self) -> &'static str {
+        match self {
+            Self::CommandFailed { .. } => "git_command_failed",
+            Self::DetachedHead => "detached_head",
+            Self::InvalidOutput { .. } => "invalid_git_output",
+            Self::LaunchFailed { .. } => "git_launch_failed",
+            Self::NotRepository => "not_repository",
+        }
+    }
+}
+
 fn run_git<I, S>(working_dir: &Path, args: I) -> Result<String, GitError>
 where
     I: IntoIterator<Item = S>,

@@ -9,6 +9,10 @@ use clap_complete::Shell;
     long_about = None
 )]
 pub struct Cli {
+    /// Emit machine-readable JSON for app-level errors.
+    #[arg(long, global = true)]
+    pub json_errors: bool,
+
     #[command(subcommand)]
     pub command: CliCommand,
 }
@@ -99,6 +103,20 @@ mod tests {
             cli.command,
             CliCommand::Status {
                 json: true,
+                name: "default".to_owned(),
+            }
+        );
+    }
+
+    #[test]
+    fn parses_global_json_errors_flag() {
+        let cli = Cli::parse_from(["zaphod", "--json-errors", "status"]);
+
+        assert!(cli.json_errors);
+        assert_eq!(
+            cli.command,
+            CliCommand::Status {
+                json: false,
                 name: "default".to_owned(),
             }
         );

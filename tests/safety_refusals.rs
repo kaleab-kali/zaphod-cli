@@ -19,6 +19,28 @@ fn status_rejects_directory_outside_git_repository() {
 }
 
 #[test]
+fn status_error_can_emit_json_error() {
+    let dir = TestDir::new("zaphod-cli-safety");
+
+    let output = zaphod(dir.path(), ["--json-errors", "status"]);
+
+    assert!(!output.status.success());
+    assert_eq!(output.status.code(), Some(2));
+    let error: serde_json::Value =
+        serde_json::from_slice(&output.stderr).expect("json error output");
+    assert_eq!(
+        error,
+        json!({
+            "error": {
+                "kind": "not_repository",
+                "message": "not inside a Git repository",
+                "exit_code": 2,
+            }
+        })
+    );
+}
+
+#[test]
 fn status_rejects_detached_head() {
     let dir = TestDir::new("zaphod-cli-safety");
     init_repo_with_pair_branches(dir.path());
