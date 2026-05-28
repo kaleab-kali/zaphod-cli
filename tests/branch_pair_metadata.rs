@@ -125,6 +125,7 @@ fn pair_rejects_missing_branch() {
     let output = zaphod(dir.path(), ["pair", "feature/api", "missing"]);
 
     assert!(!output.status.success());
+    assert_eq!(output.status.code(), Some(2));
     assert_stderr_contains(&output, "branch 'missing' was not found");
 }
 
@@ -136,5 +137,6 @@ fn pair_rejects_invalid_branch_name() {
     let output = zaphod(dir.path(), ["pair", "feature/api", "feature..ui"]);
 
     assert!(!output.status.success());
+    assert_eq!(output.status.code(), Some(2));
     assert_stderr_contains(&output, "branch name 'feature..ui' is invalid");
 }

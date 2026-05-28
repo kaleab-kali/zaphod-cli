@@ -286,6 +286,18 @@ zaphod completions elvish
 
 Redirect the output to the location expected by your shell.
 
+## Exit Codes
+
+Zaphod uses stable app-level exit codes for scripts:
+
+```text
+0  success
+1  runtime or unexpected failure
+2  invalid input, missing branch, missing pair, or incompatible repository state
+3  safety refusal, such as a dirty worktree or in-progress merge
+4  doctor found repository, metadata, or pair health problems
+```
+
 ## Demo Transcript
 
 ```text

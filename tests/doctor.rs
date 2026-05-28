@@ -37,6 +37,7 @@ fn doctor_reports_missing_pair_branch() {
     let output = zaphod(dir.path(), ["doctor"]);
 
     assert!(!output.status.success());
+    assert_eq!(output.status.code(), Some(4));
     assert_stdout_contains(
         &output,
         "- default: feature/api <-> feature/ui [missing right branch: feature/ui]",
@@ -55,6 +56,7 @@ fn doctor_reports_corrupt_metadata() {
     let output = zaphod(dir.path(), ["doctor"]);
 
     assert!(!output.status.success());
+    assert_eq!(output.status.code(), Some(4));
     assert_stdout_contains(&output, "Metadata: error (failed to parse metadata file");
     assert_stderr_contains(&output, "doctor found problems");
 }
@@ -66,6 +68,7 @@ fn doctor_reports_directory_outside_git_repository() {
     let output = zaphod(dir.path(), ["doctor"]);
 
     assert!(!output.status.success());
+    assert_eq!(output.status.code(), Some(4));
     assert_stdout_contains(&output, "Git: ok (git version ");
     assert_stdout_contains(&output, "Repository: error (not inside a Git repository)");
     assert_stderr_contains(&output, "doctor found problems");

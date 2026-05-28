@@ -14,6 +14,7 @@ fn status_rejects_directory_outside_git_repository() {
     let output = zaphod(dir.path(), ["status"]);
 
     assert!(!output.status.success());
+    assert_eq!(output.status.code(), Some(2));
     assert_stderr_contains(&output, "not inside a Git repository");
 }
 
@@ -65,6 +66,7 @@ fn switch_rejects_merge_in_progress() {
     let output = zaphod(dir.path(), ["switch"]);
 
     assert!(!output.status.success());
+    assert_eq!(output.status.code(), Some(3));
     assert_stderr_contains(&output, "refusing to switch: merge is in progress");
     assert_eq!(current_branch(dir.path()), "feature/api");
 }
@@ -85,6 +87,7 @@ fn switch_rejects_rebase_in_progress() {
     let output = zaphod(dir.path(), ["switch"]);
 
     assert!(!output.status.success());
+    assert_eq!(output.status.code(), Some(3));
     assert_stderr_contains(&output, "refusing to switch: rebase is in progress");
     assert_eq!(current_branch(dir.path()), "feature/api");
 }
@@ -121,6 +124,7 @@ fn switch_rejects_missing_target_branch() {
     let output = zaphod(dir.path(), ["switch"]);
 
     assert!(!output.status.success());
+    assert_eq!(output.status.code(), Some(3));
     assert_stderr_contains(&output, "refusing to switch: target branch is missing");
     assert_eq!(current_branch(dir.path()), "feature/api");
 }

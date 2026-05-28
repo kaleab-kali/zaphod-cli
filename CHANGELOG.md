@@ -24,6 +24,7 @@ and this project intends to follow semantic versioning once releases begin.
 - README workflow guidance, pair naming guidance, and release build notes.
 - GitHub Actions workflow for release binary artifacts.
 - GitHub Release publishing for tagged release binary artifacts.
+- Stable app-level exit codes for scripting.
 
 ### Changed
 
