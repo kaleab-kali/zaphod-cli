@@ -67,6 +67,12 @@ impl GitRepository {
         Ok(output.status.success())
     }
 
+    pub fn branch_name_is_valid(&self, branch: &str) -> Result<bool, GitError> {
+        let output = git_output(&self.root, ["check-ref-format", "--branch", branch])?;
+
+        Ok(output.status.success())
+    }
+
     pub fn switch_branch(&self, branch: &str) -> Result<(), GitError> {
         run_git(&self.root, ["switch", "--", branch])?;
 
@@ -283,6 +289,15 @@ mod tests {
         assert!(!repo.is_dirty().expect("dirty status"));
         assert!(repo.branch_exists("main").expect("branch exists"));
         assert!(!repo.branch_exists("missing").expect("branch exists"));
+        assert!(
+            repo.branch_name_is_valid("feature/api")
+                .expect("valid branch name")
+        );
+        assert!(
+            !repo
+                .branch_name_is_valid("feature..api")
+                .expect("invalid branch name")
+        );
     }
 
     #[test]

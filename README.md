@@ -176,6 +176,8 @@ zaphod pair main feature/api --name api
 ```
 
 Both branches must already exist locally.
+Branch names are validated with Git's branch-name rules before Zaphod stores
+the pair.
 
 ### `zaphod status`
 

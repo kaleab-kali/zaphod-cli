@@ -31,6 +31,8 @@ fn generate_completions(shell: Shell) -> Result<(), AppError> {
 
 fn pair_branches(name: String, left: String, right: String) -> Result<(), AppError> {
     let repository = GitRepository::discover(".")?;
+    ensure_branch_name_is_valid(&repository, &left)?;
+    ensure_branch_name_is_valid(&repository, &right)?;
     ensure_branch_exists(&repository, &left)?;
     ensure_branch_exists(&repository, &right)?;
 
@@ -305,11 +307,22 @@ fn ensure_branch_exists(repository: &GitRepository, branch: &str) -> Result<(), 
     })
 }
 
+fn ensure_branch_name_is_valid(repository: &GitRepository, branch: &str) -> Result<(), AppError> {
+    if repository.branch_name_is_valid(branch)? {
+        return Ok(());
+    }
+
+    Err(AppError::InvalidBranchName {
+        branch: branch.to_owned(),
+    })
+}
+
 #[derive(Debug)]
 pub enum AppError {
     BranchNotFound { branch: String },
     DoctorFailed,
     Git { source: GitError },
+    InvalidBranchName { branch: String },
     Metadata { source: MetadataError },
     Pair { source: PairError },
     PairNotFound { name: String },
@@ -324,6 +337,9 @@ impl Display for AppError {
             Self::BranchNotFound { branch } => write!(formatter, "branch '{branch}' was not found"),
             Self::DoctorFailed => write!(formatter, "doctor found problems"),
             Self::Git { source } => Display::fmt(source, formatter),
+            Self::InvalidBranchName { branch } => {
+                write!(formatter, "branch name '{branch}' is invalid")
+            }
             Self::Metadata { source } => Display::fmt(source, formatter),
             Self::Pair { source } => Display::fmt(source, formatter),
             Self::PairNotFound { name } => write!(formatter, "pair '{name}' was not found"),
@@ -351,6 +367,7 @@ impl Error for AppError {
             Self::Status { source } => Some(source),
             Self::BranchNotFound { .. }
             | Self::DoctorFailed
+            | Self::InvalidBranchName { .. }
             | Self::PairNotFound { .. }
             | Self::SwitchRefused { .. } => None,
         }

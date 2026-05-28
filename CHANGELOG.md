@@ -27,6 +27,8 @@ and this project intends to follow semantic versioning once releases begin.
 
 ### Changed
 
+- `pair` now validates branch names with Git's branch-name rules before looking
+  up or storing a pair.
 - README documentation now shows the `status --json` shape and known refusal
   reason values for script users.
 
