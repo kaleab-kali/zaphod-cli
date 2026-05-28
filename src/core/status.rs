@@ -69,7 +69,7 @@ pub enum WorktreeStatus {
 }
 
 impl WorktreeStatus {
-    fn from_dirty(is_dirty: bool) -> Self {
+    pub(crate) fn from_dirty(is_dirty: bool) -> Self {
         if is_dirty { Self::Dirty } else { Self::Clean }
     }
 }
@@ -93,7 +93,10 @@ pub enum GitState {
 }
 
 impl GitState {
-    fn from_repository_state(is_merge_in_progress: bool, is_rebase_in_progress: bool) -> Self {
+    pub(crate) fn from_repository_state(
+        is_merge_in_progress: bool,
+        is_rebase_in_progress: bool,
+    ) -> Self {
         match (is_merge_in_progress, is_rebase_in_progress) {
             (false, false) => Self::Ready,
             (true, false) => Self::MergeInProgress,
