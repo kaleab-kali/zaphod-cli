@@ -245,6 +245,12 @@ List all branch pairs configured for the current repository:
 zaphod list
 ```
 
+For scripts, use JSON output:
+
+```sh
+zaphod list --json
+```
+
 ### `zaphod doctor`
 
 Diagnose Git availability, repository state, metadata health, and configured

@@ -58,7 +58,11 @@ pub enum CliCommand {
     },
 
     /// List all branch pairs in the current repository.
-    List,
+    List {
+        /// Emit machine-readable JSON.
+        #[arg(long)]
+        json: bool,
+    },
 
     /// Diagnose Git repository state and Zaphod metadata.
     Doctor,
@@ -120,6 +124,13 @@ mod tests {
                 name: "default".to_owned(),
             }
         );
+    }
+
+    #[test]
+    fn parses_list_json_flag() {
+        let cli = Cli::parse_from(["zaphod", "list", "--json"]);
+
+        assert_eq!(cli.command, CliCommand::List { json: true });
     }
 
     #[test]

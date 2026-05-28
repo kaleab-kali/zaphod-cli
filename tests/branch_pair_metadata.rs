@@ -26,6 +26,20 @@ fn pair_list_and_unpair_update_repo_metadata() {
     assert_success(&list);
     assert_stdout_contains(&list, "default: feature/api <-> feature/ui");
 
+    let json_list = zaphod(dir.path(), ["list", "--json"]);
+    assert_success(&json_list);
+    let pairs: serde_json::Value = serde_json::from_slice(&json_list.stdout).expect("list json");
+    assert_eq!(
+        pairs,
+        json!([
+            {
+                "name": "default",
+                "left": "feature/api",
+                "right": "feature/ui",
+            }
+        ])
+    );
+
     let status = zaphod(dir.path(), ["status"]);
     assert_success(&status);
     assert_stdout_contains(&status, "Pair: default");
@@ -62,6 +76,12 @@ fn pair_list_and_unpair_update_repo_metadata() {
     let empty_list = zaphod(dir.path(), ["list"]);
     assert_success(&empty_list);
     assert_stdout_contains(&empty_list, "No branch pairs configured.");
+
+    let empty_json_list = zaphod(dir.path(), ["list", "--json"]);
+    assert_success(&empty_json_list);
+    let pairs: serde_json::Value =
+        serde_json::from_slice(&empty_json_list.stdout).expect("empty list json");
+    assert_eq!(pairs, json!([]));
 }
 
 #[test]

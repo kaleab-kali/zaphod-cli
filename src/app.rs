@@ -11,7 +11,7 @@ use std::io;
 pub fn run(cli: Cli) -> Result<(), AppError> {
     match cli.command {
         CliCommand::Pair { left, right, name } => pair_branches(name, left, right),
-        CliCommand::List => list_pairs(),
+        CliCommand::List { json } => list_pairs(json),
         CliCommand::Unpair { name } => unpair_branches(&name),
         CliCommand::Status { json, name } => show_status(&name, json),
         CliCommand::Switch { name } => switch_branches(&name),
@@ -54,10 +54,15 @@ fn pair_branches(name: String, left: String, right: String) -> Result<(), AppErr
     Ok(())
 }
 
-fn list_pairs() -> Result<(), AppError> {
+fn list_pairs(json: bool) -> Result<(), AppError> {
     let repository = GitRepository::discover(".")?;
     let store = MetadataStore::for_repository(&repository);
     let pairs = store.load()?;
+
+    if json {
+        println!("{}", serde_json::to_string_pretty(pairs.pairs())?);
+        return Ok(());
+    }
 
     if pairs.is_empty() {
         println!("No branch pairs configured.");
