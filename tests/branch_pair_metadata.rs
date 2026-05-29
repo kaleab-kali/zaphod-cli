@@ -317,6 +317,69 @@ fn assert_json_passes_for_expected_pair_branch_and_side() {
 }
 
 #[test]
+fn claim_json_records_current_pair_and_branch() {
+    let dir = TestDir::new("zaphod-cli-metadata");
+    init_repo_with_pair_branches(dir.path());
+    let pair = zaphod(dir.path(), ["pair", "feature/api", "feature/ui"]);
+    assert_success(&pair);
+
+    let output = zaphod(dir.path(), ["claim", "--json", "--agent", "codex"]);
+
+    assert_success(&output);
+    let report: serde_json::Value = serde_json::from_slice(&output.stdout).expect("claim json");
+    assert_eq!(report["ok"], true);
+    assert_eq!(report["status"], "claimed");
+    assert_eq!(report["agent"], "codex");
+    assert_eq!(report["pair"], "default");
+    assert_eq!(report["branch"], "feature/api");
+    assert_eq!(report["claim"]["agent"], "codex");
+    assert_eq!(report["claim"]["pair"], "default");
+    assert_eq!(report["claim"]["branch"], "feature/api");
+    assert!(report["claim"]["created_at_unix"].as_u64().is_some());
+    assert!(report["conflict"].is_null());
+    assert_eq!(report["refusal_reasons"], json!([]));
+    assert!(
+        report["claims_path"]
+            .as_str()
+            .expect("claims path")
+            .ends_with("claims.toml")
+    );
+
+    let claims = zaphod(dir.path(), ["claims", "--json"]);
+    assert_success(&claims);
+    let report: serde_json::Value = serde_json::from_slice(&claims.stdout).expect("claims json");
+    assert_eq!(report["claims"][0]["agent"], "codex");
+    assert_eq!(report["claims"][0]["pair"], "default");
+    assert_eq!(report["claims"][0]["branch"], "feature/api");
+}
+
+#[test]
+fn unclaim_json_releases_current_pair_and_branch() {
+    let dir = TestDir::new("zaphod-cli-metadata");
+    init_repo_with_pair_branches(dir.path());
+    let pair = zaphod(dir.path(), ["pair", "feature/api", "feature/ui"]);
+    assert_success(&pair);
+    let claim = zaphod(dir.path(), ["claim", "--agent", "codex"]);
+    assert_success(&claim);
+
+    let output = zaphod(dir.path(), ["unclaim", "--json", "--agent", "codex"]);
+
+    assert_success(&output);
+    let report: serde_json::Value = serde_json::from_slice(&output.stdout).expect("unclaim json");
+    assert_eq!(report["ok"], true);
+    assert_eq!(report["status"], "released");
+    assert_eq!(report["agent"], "codex");
+    assert_eq!(report["pair"], "default");
+    assert_eq!(report["branch"], "feature/api");
+    assert_eq!(report["claim"]["agent"], "codex");
+
+    let claims = zaphod(dir.path(), ["claims", "--json"]);
+    assert_success(&claims);
+    let report: serde_json::Value = serde_json::from_slice(&claims.stdout).expect("claims json");
+    assert_eq!(report["claims"], json!([]));
+}
+
+#[test]
 fn status_reports_dirty_worktree_refusal() {
     let dir = TestDir::new("zaphod-cli-metadata");
     init_repo_with_pair_branches(dir.path());

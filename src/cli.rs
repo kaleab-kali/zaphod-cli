@@ -88,6 +88,43 @@ pub enum CliCommand {
         side: Option<PairSide>,
     },
 
+    /// Claim the current pair and branch for an agent session.
+    Claim {
+        /// Emit machine-readable JSON.
+        #[arg(long)]
+        json: bool,
+
+        /// Agent/session name to record in the claim.
+        #[arg(long)]
+        agent: String,
+
+        /// Pair name to claim.
+        #[arg(long, default_value = "default")]
+        pair: String,
+    },
+
+    /// List active agent session claims.
+    Claims {
+        /// Emit machine-readable JSON.
+        #[arg(long)]
+        json: bool,
+    },
+
+    /// Release an agent session claim for the current pair and branch.
+    Unclaim {
+        /// Emit machine-readable JSON.
+        #[arg(long)]
+        json: bool,
+
+        /// Agent/session name that owns the claim.
+        #[arg(long)]
+        agent: String,
+
+        /// Pair name for the claim.
+        #[arg(long, default_value = "default")]
+        pair: String,
+    },
+
     /// Remove a branch pair.
     Unpair {
         /// Pair name.
@@ -287,6 +324,43 @@ mod tests {
                 pair: Some("api".to_owned()),
                 branch: Some("feature/api".to_owned()),
                 side: Some(PairSide::Left),
+            }
+        );
+    }
+
+    #[test]
+    fn parses_claim_command() {
+        let cli = Cli::parse_from([
+            "zaphod", "claim", "--json", "--agent", "codex", "--pair", "api",
+        ]);
+
+        assert_eq!(
+            cli.command,
+            CliCommand::Claim {
+                json: true,
+                agent: "codex".to_owned(),
+                pair: "api".to_owned(),
+            }
+        );
+    }
+
+    #[test]
+    fn parses_claims_command() {
+        let cli = Cli::parse_from(["zaphod", "claims", "--json"]);
+
+        assert_eq!(cli.command, CliCommand::Claims { json: true });
+    }
+
+    #[test]
+    fn parses_unclaim_command() {
+        let cli = Cli::parse_from(["zaphod", "unclaim", "--agent", "codex"]);
+
+        assert_eq!(
+            cli.command,
+            CliCommand::Unclaim {
+                json: false,
+                agent: "codex".to_owned(),
+                pair: "default".to_owned(),
             }
         );
     }

@@ -19,6 +19,7 @@ Zaphod is in early development. The current `0.1.x` CLI can:
 - List, rename, and remove branch pairs.
 - Run preflight checks for humans and coding agents.
 - Assert the expected branch, pair, or pair side before scripted work starts.
+- Claim and release a pair/branch for an agent session.
 - Refuse unsafe switches when the worktree is dirty or Git is mid-operation.
 - Emit JSON status for scripts.
 - Diagnose repository, metadata, and branch-pair health in text or JSON.
@@ -57,6 +58,7 @@ Coding agents can use Zaphod as a preflight gate:
 
 ```sh
 zaphod preflight --json
+zaphod claim --agent codex --pair api --json
 zaphod assert --pair api --side left --json
 zaphod status --json
 zaphod doctor --json
@@ -79,6 +81,19 @@ If the repository is on the UI side, outside the pair, detached, or missing the
 expected pair, the command fails before any file edits happen. The agent can
 then stop, report the mismatch, or ask for human approval instead of continuing
 on the wrong branch.
+
+When several agents, scripts, or terminals may touch the same repository,
+claims add a lightweight coordination layer:
+
+```sh
+zaphod claim --agent codex --pair search --json
+# work on the branch
+zaphod unclaim --agent codex --pair search
+```
+
+Claims are local metadata only. They do not lock Git, modify branches, or delete
+anything. They make accidental overlap visible so another agent can refuse to
+start on the same pair and branch.
 
 ## Safety Model
 
@@ -247,6 +262,44 @@ the default pair. `--side` uses the default pair unless `--pair` is provided.
 
 This command is read-only and is designed for scripts and coding agents that
 need to prove they are in the right place before editing files.
+
+### `zaphod claim`
+
+Claim the current pair and branch for an agent session:
+
+```sh
+zaphod claim --agent codex --pair api
+zaphod claim --agent codex --pair api --json
+```
+
+`claim` writes repo-local metadata under `.git/zaphod/claims.toml`. It refuses
+when another agent has already claimed the same pair and current branch. It also
+uses the same readiness checks as `preflight`, so it refuses when the worktree
+is dirty, Git is mid-merge or mid-rebase, the current branch is outside the
+pair, or the paired target branch is missing.
+
+Agent names may contain only letters, numbers, `.`, `_`, and `-`.
+
+### `zaphod claims`
+
+List active agent session claims:
+
+```sh
+zaphod claims
+zaphod claims --json
+```
+
+### `zaphod unclaim`
+
+Release an agent session claim for the current pair and branch:
+
+```sh
+zaphod unclaim --agent codex --pair api
+zaphod unclaim --agent codex --pair api --json
+```
+
+`unclaim` only removes the matching claim metadata. It does not switch
+branches, clean files, or alter Git history.
 
 ### `zaphod status`
 
