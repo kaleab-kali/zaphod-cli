@@ -17,6 +17,7 @@ Zaphod is in early development. The current `0.1.x` CLI can:
 - Switch to the paired branch.
 - Preview a safe switch without changing branches.
 - List, rename, and remove branch pairs.
+- Run preflight checks for humans and coding agents.
 - Refuse unsafe switches when the worktree is dirty or Git is mid-operation.
 - Emit JSON status for scripts.
 - Diagnose repository, metadata, and branch-pair health in text or JSON.
@@ -42,6 +43,26 @@ feature/api  <->  feature/ui
 
 Then it gives you a small set of commands for checking and moving between the
 two sides safely.
+
+## Agentic Coding
+
+Zaphod is not a general Git replacement. For normal human Git users, it is a
+small safety and convenience tool. Its stronger direction is agent-safe Git
+workflow guardrails: giving humans and coding agents machine-readable checks,
+safe branch-pair movement, and clear refusal behavior before touching
+repository state.
+
+Coding agents can use Zaphod as a preflight gate:
+
+```sh
+zaphod preflight --json
+zaphod status --json
+zaphod doctor --json
+zaphod switch --dry-run
+```
+
+This lets an agent check branch, worktree, merge, rebase, and pair state before
+editing files or switching branches.
 
 ## Safety Model
 
@@ -179,6 +200,19 @@ zaphod pair main feature/api --name api
 Both branches must already exist locally.
 Branch names are validated with Git's branch-name rules before Zaphod stores
 the pair.
+
+### `zaphod preflight`
+
+Check whether the current repository is ready for paired-branch work:
+
+```sh
+zaphod preflight --json
+```
+
+Preflight is read-only. It reports the requested pair, current branch, paired
+target branch, worktree state, Git operation state, switch readiness, and any
+refusal reasons. It exits successfully when the pair is ready and exits with an
+error when the repository is not ready.
 
 ### `zaphod status`
 

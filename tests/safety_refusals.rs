@@ -113,6 +113,51 @@ fn switch_dry_run_keeps_safety_refusals() {
 }
 
 #[test]
+fn preflight_json_reports_dirty_refusal() {
+    let dir = TestDir::new("zaphod-cli-safety");
+    init_repo_with_pair_branches(dir.path());
+    let pair = zaphod(dir.path(), ["pair", "feature/api", "feature/ui"]);
+    assert_success(&pair);
+    fs::write(dir.path().join("dirty.txt"), "local work\n").expect("write dirty file");
+
+    let output = zaphod(dir.path(), ["preflight", "--json"]);
+
+    assert!(!output.status.success());
+    assert_eq!(output.status.code(), Some(3));
+    let report: serde_json::Value = serde_json::from_slice(&output.stdout).expect("preflight json");
+    assert_eq!(report["ready"], false);
+    assert_eq!(report["pair"], "default");
+    assert_eq!(report["current"], "feature/api");
+    assert_eq!(report["other"], "feature/ui");
+    assert_eq!(report["worktree"], "dirty");
+    assert_eq!(report["switch_allowed"], false);
+    assert_eq!(report["refusal_reasons"], json!(["dirty_worktree"]));
+    assert!(report["error"].is_null());
+    assert_stderr_contains(
+        &output,
+        "preflight failed: worktree has uncommitted changes",
+    );
+}
+
+#[test]
+fn preflight_json_reports_missing_pair() {
+    let dir = TestDir::new("zaphod-cli-safety");
+    init_repo_with_pair_branches(dir.path());
+
+    let output = zaphod(dir.path(), ["preflight", "--json"]);
+
+    assert!(!output.status.success());
+    assert_eq!(output.status.code(), Some(2));
+    let report: serde_json::Value = serde_json::from_slice(&output.stdout).expect("preflight json");
+    assert_eq!(report["ready"], false);
+    assert_eq!(report["pair"], "default");
+    assert_eq!(report["switch_allowed"], false);
+    assert_eq!(report["error"]["kind"], "pair_not_found");
+    assert_eq!(report["error"]["message"], "pair 'default' was not found");
+    assert_stderr_contains(&output, "pair 'default' was not found");
+}
+
+#[test]
 fn switch_rejects_rebase_in_progress() {
     let dir = TestDir::new("zaphod-cli-safety");
     init_repo_with_pair_branches(dir.path());
