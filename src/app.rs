@@ -25,7 +25,7 @@ pub fn run(cli: Cli) -> Result<(), AppError> {
             }
         }
         CliCommand::Switch { dry_run, name } => switch_branches(&name, dry_run),
-        CliCommand::Doctor => run_doctor(),
+        CliCommand::Doctor { json } => run_doctor(json),
         CliCommand::Completions { shell } => generate_completions(shell),
     }
 }
@@ -211,99 +211,219 @@ fn switch_branches(name: &str, dry_run: bool) -> Result<(), AppError> {
     Ok(())
 }
 
-fn run_doctor() -> Result<(), AppError> {
-    let mut healthy = true;
+fn run_doctor(json: bool) -> Result<(), AppError> {
+    let report = build_doctor_report();
+
+    if json {
+        println!("{}", serde_json::to_string_pretty(&report)?);
+    } else {
+        print_doctor_report(&report);
+    }
+
+    if report.healthy {
+        Ok(())
+    } else {
+        Err(AppError::DoctorFailed)
+    }
+}
+
+fn build_doctor_report() -> DoctorReport {
+    let mut report = DoctorReport::default();
 
     match GitRepository::version() {
-        Ok(version) => println!("Git: ok ({version})"),
+        Ok(version) => {
+            report.git.ok = true;
+            report.git.version = Some(version);
+        }
         Err(error) => {
-            println!("Git: error ({error})");
-            return Err(AppError::DoctorFailed);
+            report.healthy = false;
+            report.git.error = Some(error.to_string());
+            return report;
         }
     }
 
     let repository = match GitRepository::discover(".") {
         Ok(repository) => {
-            println!("Repository: ok ({})", repository.root().display());
+            report.repository.ok = true;
+            report.repository.root = Some(repository.root().display().to_string());
+            report.repository.git_dir = Some(repository.git_dir().display().to_string());
             repository
         }
         Err(error) => {
-            println!("Repository: error ({error})");
-            return Err(AppError::DoctorFailed);
+            report.healthy = false;
+            report.repository.error = Some(error.to_string());
+            return report;
         }
     };
 
-    println!("Git directory: {}", repository.git_dir().display());
-
     match repository.current_branch() {
-        Ok(branch) => println!("Current branch: {branch}"),
+        Ok(branch) => {
+            report.current_branch = Some(DoctorCurrentBranchReport {
+                ok: true,
+                branch: Some(branch),
+                error: None,
+            });
+        }
         Err(error) => {
-            println!("Current branch: error ({error})");
-            healthy = false;
+            report.healthy = false;
+            report.current_branch = Some(DoctorCurrentBranchReport {
+                ok: false,
+                branch: None,
+                error: Some(error.to_string()),
+            });
         }
     }
 
     match repository.is_dirty() {
-        Ok(is_dirty) => println!("Worktree: {}", if is_dirty { "dirty" } else { "clean" }),
+        Ok(is_dirty) => {
+            report.worktree = Some(DoctorWorktreeReport {
+                ok: true,
+                state: Some(if is_dirty { "dirty" } else { "clean" }.to_owned()),
+                error: None,
+            });
+        }
         Err(error) => {
-            println!("Worktree: error ({error})");
-            healthy = false;
+            report.healthy = false;
+            report.worktree = Some(DoctorWorktreeReport {
+                ok: false,
+                state: None,
+                error: Some(error.to_string()),
+            });
         }
     }
 
-    println!(
-        "Git state: {}",
+    report.git_state = Some(
         format_git_state(
             repository.is_merge_in_progress(),
-            repository.is_rebase_in_progress()
+            repository.is_rebase_in_progress(),
         )
+        .to_owned(),
     );
 
     let store = MetadataStore::for_repository(&repository);
     match store.load() {
         Ok(pairs) => {
-            println!(
-                "Metadata: ok ({} pair(s), {})",
-                pairs.pairs().len(),
-                store.path().display()
-            );
+            let mut pair_reports = Vec::new();
 
-            if pairs.is_empty() {
-                println!("Pairs: none configured");
-            } else {
-                println!("Pairs:");
-                for pair in pairs.pairs() {
-                    match diagnose_pair_branches(&repository, pair) {
-                        Ok(summary) => {
-                            println!(
-                                "- {}: {} <-> {} [{}]",
-                                pair.name, pair.left, pair.right, summary
-                            );
-                            if summary != "ok" {
-                                healthy = false;
-                            }
+            for pair in pairs.pairs() {
+                match diagnose_pair_branches(&repository, pair) {
+                    Ok(summary) => {
+                        let ok = summary == "ok";
+                        if !ok {
+                            report.healthy = false;
                         }
-                        Err(error) => {
-                            println!(
-                                "- {}: {} <-> {} [error: {}]",
-                                pair.name, pair.left, pair.right, error
-                            );
-                            healthy = false;
-                        }
+                        pair_reports.push(DoctorPairReport {
+                            name: pair.name.clone(),
+                            left: pair.left.clone(),
+                            right: pair.right.clone(),
+                            ok,
+                            summary,
+                        });
+                    }
+                    Err(error) => {
+                        report.healthy = false;
+                        pair_reports.push(DoctorPairReport {
+                            name: pair.name.clone(),
+                            left: pair.left.clone(),
+                            right: pair.right.clone(),
+                            ok: false,
+                            summary: format!("error: {error}"),
+                        });
                     }
                 }
             }
+
+            report.metadata = Some(DoctorMetadataReport {
+                ok: true,
+                path: Some(store.path().display().to_string()),
+                pair_count: Some(pairs.pairs().len()),
+                error: None,
+                pairs: pair_reports,
+            });
         }
         Err(error) => {
-            println!("Metadata: error ({error})");
-            healthy = false;
+            report.healthy = false;
+            report.metadata = Some(DoctorMetadataReport {
+                ok: false,
+                path: Some(store.path().display().to_string()),
+                pair_count: None,
+                error: Some(error.to_string()),
+                pairs: Vec::new(),
+            });
         }
     }
 
-    if healthy {
-        Ok(())
-    } else {
-        Err(AppError::DoctorFailed)
+    report
+}
+
+fn print_doctor_report(report: &DoctorReport) {
+    match (&report.git.version, &report.git.error) {
+        (Some(version), _) => println!("Git: ok ({version})"),
+        (_, Some(error)) => println!("Git: error ({error})"),
+        _ => println!("Git: error (unknown)"),
+    }
+
+    if !report.git.ok {
+        return;
+    }
+
+    match (&report.repository.root, &report.repository.error) {
+        (Some(root), _) => println!("Repository: ok ({root})"),
+        (_, Some(error)) => {
+            println!("Repository: error ({error})");
+            return;
+        }
+        _ => {
+            println!("Repository: error (unknown)");
+            return;
+        }
+    }
+
+    if let Some(git_dir) = &report.repository.git_dir {
+        println!("Git directory: {git_dir}");
+    }
+
+    if let Some(current_branch) = &report.current_branch {
+        if let Some(branch) = &current_branch.branch {
+            println!("Current branch: {branch}");
+        } else if let Some(error) = &current_branch.error {
+            println!("Current branch: error ({error})");
+        }
+    }
+
+    if let Some(worktree) = &report.worktree {
+        if let Some(state) = &worktree.state {
+            println!("Worktree: {state}");
+        } else if let Some(error) = &worktree.error {
+            println!("Worktree: error ({error})");
+        }
+    }
+
+    if let Some(git_state) = &report.git_state {
+        println!("Git state: {git_state}");
+    }
+
+    if let Some(metadata) = &report.metadata {
+        if metadata.ok {
+            println!(
+                "Metadata: ok ({} pair(s), {})",
+                metadata.pair_count.unwrap_or_default(),
+                metadata.path.as_deref().unwrap_or("unknown")
+            );
+            if metadata.pairs.is_empty() {
+                println!("Pairs: none configured");
+            } else {
+                println!("Pairs:");
+                for pair in &metadata.pairs {
+                    println!(
+                        "- {}: {} <-> {} [{}]",
+                        pair.name, pair.left, pair.right, pair.summary
+                    );
+                }
+            }
+        } else if let Some(error) = &metadata.error {
+            println!("Metadata: error ({error})");
+        }
     }
 }
 
@@ -536,6 +656,78 @@ impl Display for StatusReportRefusalReason {
             Self::TargetBranchMissing => write!(formatter, "target branch is missing"),
         }
     }
+}
+
+#[derive(Debug, Serialize)]
+struct DoctorReport {
+    healthy: bool,
+    git: DoctorGitReport,
+    repository: DoctorRepositoryReport,
+    current_branch: Option<DoctorCurrentBranchReport>,
+    worktree: Option<DoctorWorktreeReport>,
+    git_state: Option<String>,
+    metadata: Option<DoctorMetadataReport>,
+}
+
+impl Default for DoctorReport {
+    fn default() -> Self {
+        Self {
+            healthy: true,
+            git: DoctorGitReport::default(),
+            repository: DoctorRepositoryReport::default(),
+            current_branch: None,
+            worktree: None,
+            git_state: None,
+            metadata: None,
+        }
+    }
+}
+
+#[derive(Debug, Default, Serialize)]
+struct DoctorGitReport {
+    ok: bool,
+    version: Option<String>,
+    error: Option<String>,
+}
+
+#[derive(Debug, Default, Serialize)]
+struct DoctorRepositoryReport {
+    ok: bool,
+    root: Option<String>,
+    git_dir: Option<String>,
+    error: Option<String>,
+}
+
+#[derive(Debug, Serialize)]
+struct DoctorCurrentBranchReport {
+    ok: bool,
+    branch: Option<String>,
+    error: Option<String>,
+}
+
+#[derive(Debug, Serialize)]
+struct DoctorWorktreeReport {
+    ok: bool,
+    state: Option<String>,
+    error: Option<String>,
+}
+
+#[derive(Debug, Serialize)]
+struct DoctorMetadataReport {
+    ok: bool,
+    path: Option<String>,
+    pair_count: Option<usize>,
+    error: Option<String>,
+    pairs: Vec<DoctorPairReport>,
+}
+
+#[derive(Debug, Serialize)]
+struct DoctorPairReport {
+    name: String,
+    left: String,
+    right: String,
+    ok: bool,
+    summary: String,
 }
 
 fn ensure_branch_exists(repository: &GitRepository, branch: &str) -> Result<(), AppError> {

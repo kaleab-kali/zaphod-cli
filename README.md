@@ -19,7 +19,7 @@ Zaphod is in early development. The current `0.1.x` CLI can:
 - List, rename, and remove branch pairs.
 - Refuse unsafe switches when the worktree is dirty or Git is mid-operation.
 - Emit JSON status for scripts.
-- Diagnose repository, metadata, and branch-pair health.
+- Diagnose repository, metadata, and branch-pair health in text or JSON.
 - Generate shell completions.
 
 Until Zaphod reaches `1.0`, command names and output may change between minor
@@ -295,6 +295,12 @@ zaphod doctor
 `doctor` is read-only. It exits successfully when the repository and configured
 pairs look healthy, and exits with an error when it finds problems such as
 corrupt metadata or missing paired branches.
+
+For scripts, use JSON output:
+
+```sh
+zaphod doctor --json
+```
 
 ### `zaphod unpair`
 

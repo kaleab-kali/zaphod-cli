@@ -9,6 +9,7 @@ and this project intends to follow semantic versioning once releases begin.
 
 ### Added
 
+- `doctor --json` for structured repository and metadata health reports.
 - `switch --dry-run` for previewing the target branch without switching.
 
 ## 0.1.1 - 2026-05-28
