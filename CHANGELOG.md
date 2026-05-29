@@ -7,6 +7,8 @@ and this project intends to follow semantic versioning once releases begin.
 
 ## Unreleased
 
+## 0.1.2 - 2026-05-29
+
 ### Added
 
 - `doctor --json` for structured repository and metadata health reports.
