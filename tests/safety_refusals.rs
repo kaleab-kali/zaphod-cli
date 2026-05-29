@@ -359,6 +359,49 @@ fn claim_json_reports_conflicting_agent() {
 }
 
 #[test]
+fn heartbeat_json_reports_conflicting_agent() {
+    let dir = TestDir::new("zaphod-cli-safety");
+    init_repo_with_pair_branches(dir.path());
+    let pair = zaphod(dir.path(), ["pair", "feature/api", "feature/ui"]);
+    assert_success(&pair);
+    let claim = zaphod(dir.path(), ["claim", "--agent", "codex"]);
+    assert_success(&claim);
+
+    let output = zaphod(dir.path(), ["heartbeat", "--json", "--agent", "other"]);
+
+    assert!(!output.status.success());
+    assert_eq!(output.status.code(), Some(3));
+    let report: serde_json::Value = serde_json::from_slice(&output.stdout).expect("heartbeat json");
+    assert_eq!(report["ok"], false);
+    assert_eq!(report["status"], "conflict");
+    assert_eq!(report["agent"], "other");
+    assert_eq!(report["pair"], "default");
+    assert_eq!(report["branch"], "feature/api");
+    assert_eq!(report["conflict"]["agent"], "codex");
+    assert_stderr_contains(
+        &output,
+        "pair 'default' on branch 'feature/api' is already claimed by agent 'codex'",
+    );
+}
+
+#[test]
+fn heartbeat_reports_missing_claim() {
+    let dir = TestDir::new("zaphod-cli-safety");
+    init_repo_with_pair_branches(dir.path());
+    let pair = zaphod(dir.path(), ["pair", "feature/api", "feature/ui"]);
+    assert_success(&pair);
+
+    let output = zaphod(dir.path(), ["heartbeat", "--agent", "codex"]);
+
+    assert!(!output.status.success());
+    assert_eq!(output.status.code(), Some(2));
+    assert_stderr_contains(
+        &output,
+        "no claim for agent 'codex' on pair 'default' and branch 'feature/api'",
+    );
+}
+
+#[test]
 fn claim_json_reports_dirty_refusal() {
     let dir = TestDir::new("zaphod-cli-safety");
     init_repo_with_pair_branches(dir.path());

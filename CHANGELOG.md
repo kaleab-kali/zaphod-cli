@@ -9,6 +9,8 @@ and this project intends to follow semantic versioning once releases begin.
 
 ### Added
 
+- `heartbeat` command for refreshing an existing agent claim during long-running
+  sessions.
 - `doctor --stale-after` for read-only stale claim health checks.
 
 ## 0.1.6 - 2026-05-30

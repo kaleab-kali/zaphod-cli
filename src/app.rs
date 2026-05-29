@@ -41,6 +41,7 @@ pub fn run(cli: Cli) -> Result<(), AppError> {
             side,
         } => assert_repository_state(json, pair, branch, side),
         CliCommand::Claim { json, agent, pair } => claim_current_scope(json, agent, pair),
+        CliCommand::Heartbeat { json, agent, pair } => heartbeat_claim(json, agent, pair),
         CliCommand::Claims {
             json,
             agent,
@@ -533,6 +534,70 @@ fn claim_current_scope(json: bool, agent: String, pair_name: String) -> Result<(
     let report = ClaimOperationReport {
         ok: true,
         status: "claimed",
+        repository_root: context.repository.root().display().to_string(),
+        claims_path: store.path().display().to_string(),
+        agent: claim.agent.clone(),
+        pair: claim.pair.clone(),
+        branch: claim.branch.clone(),
+        claim: Some(claim),
+        conflict: None,
+        refusal_reasons: Vec::new(),
+    };
+    print_claim_operation_report(&report, json)?;
+
+    Ok(())
+}
+
+fn heartbeat_claim(json: bool, agent: String, pair_name: String) -> Result<(), AppError> {
+    validate_agent_name(&agent)?;
+    let context = load_status_context(&pair_name)?;
+    let store = ClaimStore::for_repository(&context.repository);
+    let mut claims = store.load()?;
+
+    if let Some(conflict) =
+        claims.conflict_for_scope(&agent, &context.status.pair, &context.status.current)
+    {
+        let conflict_agent = conflict.agent.clone();
+        let report = ClaimOperationReport {
+            ok: false,
+            status: "conflict",
+            repository_root: context.repository.root().display().to_string(),
+            claims_path: store.path().display().to_string(),
+            agent,
+            pair: context.status.pair,
+            branch: context.status.current,
+            claim: None,
+            conflict: Some(conflict.clone()),
+            refusal_reasons: Vec::new(),
+        };
+        print_claim_operation_report(&report, json)?;
+        return Err(AppError::ClaimConflict {
+            agent: conflict_agent,
+            pair: report.pair,
+            branch: report.branch,
+        });
+    }
+
+    claims
+        .get_for_scope(&agent, &context.status.pair, &context.status.current)
+        .ok_or_else(|| AppError::ClaimNotFound {
+            agent: agent.clone(),
+            pair: context.status.pair.clone(),
+            branch: context.status.current.clone(),
+        })?;
+
+    let claim = AgentClaim::new(
+        agent,
+        context.status.pair,
+        context.status.current,
+        current_unix_timestamp()?,
+    )?;
+    claims.upsert(claim.clone());
+    store.save(&claims)?;
+
+    let report = ClaimOperationReport {
+        ok: true,
+        status: "refreshed",
         repository_root: context.repository.root().display().to_string(),
         claims_path: store.path().display().to_string(),
         agent: claim.agent.clone(),

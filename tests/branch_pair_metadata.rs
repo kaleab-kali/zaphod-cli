@@ -406,6 +406,52 @@ fn claim_json_records_current_pair_and_branch() {
 }
 
 #[test]
+fn heartbeat_json_refreshes_existing_claim_while_dirty() {
+    let dir = TestDir::new("zaphod-cli-metadata");
+    init_repo_with_pair_branches(dir.path());
+    let pair = zaphod(dir.path(), ["pair", "feature/api", "feature/ui"]);
+    assert_success(&pair);
+    let metadata_dir = dir.git_dir().join("zaphod");
+    fs::create_dir_all(&metadata_dir).expect("create zaphod metadata directory");
+    fs::write(
+        metadata_dir.join("claims.toml"),
+        r#"[[claims]]
+agent = "codex"
+pair = "default"
+branch = "feature/api"
+created_at_unix = 1
+"#,
+    )
+    .expect("write old claim metadata");
+    fs::write(dir.path().join("dirty.txt"), "local work\n").expect("write dirty file");
+
+    let output = zaphod(dir.path(), ["heartbeat", "--json", "--agent", "codex"]);
+
+    assert_success(&output);
+    let report: serde_json::Value = serde_json::from_slice(&output.stdout).expect("heartbeat json");
+    assert_eq!(report["ok"], true);
+    assert_eq!(report["status"], "refreshed");
+    assert_eq!(report["agent"], "codex");
+    assert_eq!(report["pair"], "default");
+    assert_eq!(report["branch"], "feature/api");
+    assert_eq!(report["claim"]["agent"], "codex");
+    assert_eq!(report["claim"]["pair"], "default");
+    assert_eq!(report["claim"]["branch"], "feature/api");
+    assert!(
+        report["claim"]["created_at_unix"]
+            .as_u64()
+            .expect("claim timestamp")
+            > 1
+    );
+
+    let stale_claims = zaphod(dir.path(), ["claims", "--json", "--stale-after", "1d"]);
+    assert_success(&stale_claims);
+    let report: serde_json::Value =
+        serde_json::from_slice(&stale_claims.stdout).expect("claims json");
+    assert_eq!(report["claims"], json!([]));
+}
+
+#[test]
 fn claims_json_filters_by_agent_pair_and_branch() {
     let dir = TestDir::new("zaphod-cli-metadata");
     init_repo_with_pair_branches(dir.path());
