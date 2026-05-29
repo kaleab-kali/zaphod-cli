@@ -1,7 +1,7 @@
 use crate::cli::{Cli, CliCommand, PairSide};
 use crate::core::{
     AgentClaim, BranchPair, ClaimError, GitState, PairError, PairStatus, RefusalReason,
-    StatusError, WorktreeStatus, validate_agent_name,
+    StatusError, WorktreeStatus, validate_agent_name, validate_pair_name,
 };
 use crate::git::{GitError, GitRepository};
 use crate::metadata::{ClaimStore, MetadataError, MetadataStore};
@@ -35,7 +35,12 @@ pub fn run(cli: Cli) -> Result<(), AppError> {
             side,
         } => assert_repository_state(json, pair, branch, side),
         CliCommand::Claim { json, agent, pair } => claim_current_scope(json, agent, pair),
-        CliCommand::Claims { json } => list_claims(json),
+        CliCommand::Claims {
+            json,
+            agent,
+            pair,
+            branch,
+        } => list_claims(json, agent, pair, branch),
         CliCommand::Unclaim {
             json,
             agent,
@@ -469,14 +474,45 @@ fn claim_current_scope(json: bool, agent: String, pair_name: String) -> Result<(
     Ok(())
 }
 
-fn list_claims(json: bool) -> Result<(), AppError> {
+fn list_claims(
+    json: bool,
+    agent: Option<String>,
+    pair: Option<String>,
+    branch: Option<String>,
+) -> Result<(), AppError> {
+    if let Some(agent) = &agent {
+        validate_agent_name(agent)?;
+    }
+    if let Some(pair) = &pair {
+        validate_pair_name(pair)?;
+    }
+
     let repository = GitRepository::discover(".")?;
+    if let Some(branch) = &branch {
+        ensure_branch_name_is_valid(&repository, branch)?;
+    }
+
     let store = ClaimStore::for_repository(&repository);
     let claims = store.load()?;
+    let filtered_claims = claims
+        .claims()
+        .iter()
+        .filter(|claim| {
+            agent.as_ref().is_none_or(|agent| claim.agent == *agent)
+                && pair.as_ref().is_none_or(|pair| claim.pair == *pair)
+                && branch.as_ref().is_none_or(|branch| claim.branch == *branch)
+        })
+        .cloned()
+        .collect();
     let report = ClaimsReport {
         repository_root: repository.root().display().to_string(),
         claims_path: store.path().display().to_string(),
-        claims: claims.claims().to_vec(),
+        filters: ClaimsFilterReport {
+            agent,
+            pair,
+            branch,
+        },
+        claims: filtered_claims,
     };
 
     if json {
@@ -1144,6 +1180,18 @@ fn print_claims_report(report: &ClaimsReport) {
     println!("Repository: {}", report.repository_root);
     println!("Claims metadata: {}", report.claims_path);
 
+    if report.filters.agent.is_some()
+        || report.filters.pair.is_some()
+        || report.filters.branch.is_some()
+    {
+        println!(
+            "Filters: agent={}, pair={}, branch={}",
+            report.filters.agent.as_deref().unwrap_or("*"),
+            report.filters.pair.as_deref().unwrap_or("*"),
+            report.filters.branch.as_deref().unwrap_or("*")
+        );
+    }
+
     if report.claims.is_empty() {
         println!("No active agent claims.");
         return;
@@ -1354,7 +1402,15 @@ struct ClaimOperationReport {
 struct ClaimsReport {
     repository_root: String,
     claims_path: String,
+    filters: ClaimsFilterReport,
     claims: Vec<AgentClaim>,
+}
+
+#[derive(Debug, Serialize)]
+struct ClaimsFilterReport {
+    agent: Option<String>,
+    pair: Option<String>,
+    branch: Option<String>,
 }
 
 #[derive(Debug, Serialize)]

@@ -319,6 +319,36 @@ fn claim_rejects_invalid_agent_name() {
 }
 
 #[test]
+fn claims_rejects_invalid_filter_values() {
+    let dir = TestDir::new("zaphod-cli-safety");
+    init_repo_with_pair_branches(dir.path());
+
+    let output = zaphod(dir.path(), ["claims", "--agent", "bad/name"]);
+
+    assert!(!output.status.success());
+    assert_eq!(output.status.code(), Some(2));
+    assert_stderr_contains(
+        &output,
+        "agent name 'bad/name' must contain only letters, numbers, '.', '_', or '-'",
+    );
+
+    let output = zaphod(dir.path(), ["claims", "--pair", "bad/name"]);
+
+    assert!(!output.status.success());
+    assert_eq!(output.status.code(), Some(2));
+    assert_stderr_contains(
+        &output,
+        "pair name 'bad/name' must contain only letters, numbers, '.', '_', or '-'",
+    );
+
+    let output = zaphod(dir.path(), ["claims", "--branch", "feature..api"]);
+
+    assert!(!output.status.success());
+    assert_eq!(output.status.code(), Some(2));
+    assert_stderr_contains(&output, "branch name 'feature..api' is invalid");
+}
+
+#[test]
 fn unclaim_reports_missing_claim() {
     let dir = TestDir::new("zaphod-cli-safety");
     init_repo_with_pair_branches(dir.path());

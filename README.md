@@ -347,7 +347,11 @@ List active agent session claims:
 ```sh
 zaphod claims
 zaphod claims --json
+zaphod claims --agent codex --pair api --branch feature/api --json
 ```
+
+Use filters when a script needs to check a specific agent, pair, or branch
+without parsing unrelated claim entries.
 
 ### `zaphod unclaim`
 
