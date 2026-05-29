@@ -442,6 +442,80 @@ created_at_unix = 4102444800
 }
 
 #[test]
+fn prune_claims_dry_runs_and_applies_stale_cleanup() {
+    let dir = TestDir::new("zaphod-cli-metadata");
+    init_repo_with_pair_branches(dir.path());
+    let metadata_dir = dir.git_dir().join("zaphod");
+    fs::create_dir_all(&metadata_dir).expect("create zaphod metadata directory");
+    let claims_path = metadata_dir.join("claims.toml");
+    fs::write(
+        &claims_path,
+        r#"[[claims]]
+agent = "old-agent"
+pair = "default"
+branch = "feature/api"
+created_at_unix = 1
+
+[[claims]]
+agent = "fresh-agent"
+pair = "default"
+branch = "feature/api"
+created_at_unix = 4102444800
+"#,
+    )
+    .expect("write claims metadata");
+
+    let dry_run = zaphod(
+        dir.path(),
+        [
+            "prune-claims",
+            "--json",
+            "--pair",
+            "default",
+            "--stale-after",
+            "1d",
+        ],
+    );
+
+    assert_success(&dry_run);
+    let report: serde_json::Value =
+        serde_json::from_slice(&dry_run.stdout).expect("prune dry-run json");
+    assert_eq!(report["applied"], false);
+    assert_eq!(report["filters"]["stale_after_seconds"], 86_400);
+    assert_eq!(report["pruned_claims"].as_array().expect("claims").len(), 1);
+    assert_eq!(report["pruned_claims"][0]["agent"], "old-agent");
+    assert_eq!(report["remaining_claim_count"], 2);
+    let metadata = fs::read_to_string(&claims_path).expect("read claims metadata");
+    assert!(metadata.contains("old-agent"));
+
+    let apply = zaphod(
+        dir.path(),
+        [
+            "prune-claims",
+            "--json",
+            "--pair",
+            "default",
+            "--stale-after",
+            "1d",
+            "--apply",
+        ],
+    );
+
+    assert_success(&apply);
+    let report: serde_json::Value =
+        serde_json::from_slice(&apply.stdout).expect("prune apply json");
+    assert_eq!(report["applied"], true);
+    assert_eq!(report["pruned_claims"].as_array().expect("claims").len(), 1);
+    assert_eq!(report["remaining_claim_count"], 1);
+
+    let claims = zaphod(dir.path(), ["claims", "--json"]);
+    assert_success(&claims);
+    let report: serde_json::Value = serde_json::from_slice(&claims.stdout).expect("claims json");
+    assert_eq!(report["claims"].as_array().expect("claims").len(), 1);
+    assert_eq!(report["claims"][0]["agent"], "fresh-agent");
+}
+
+#[test]
 fn handoff_json_reports_pair_claims_and_agent_readiness() {
     let dir = TestDir::new("zaphod-cli-metadata");
     init_repo_with_pair_branches(dir.path());

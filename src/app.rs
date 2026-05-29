@@ -47,6 +47,14 @@ pub fn run(cli: Cli) -> Result<(), AppError> {
             branch,
             stale_after,
         } => list_claims(json, agent, pair, branch, stale_after),
+        CliCommand::PruneClaims {
+            json,
+            agent,
+            pair,
+            branch,
+            stale_after,
+            apply,
+        } => prune_claims(json, agent, pair, branch, stale_after, apply),
         CliCommand::Unclaim {
             json,
             agent,
@@ -541,9 +549,7 @@ fn list_claims(
         .claims()
         .iter()
         .filter(|claim| {
-            agent.as_ref().is_none_or(|agent| claim.agent == *agent)
-                && pair.as_ref().is_none_or(|pair| claim.pair == *pair)
-                && branch.as_ref().is_none_or(|branch| claim.branch == *branch)
+            claim_matches_filters(claim, agent.as_deref(), pair.as_deref(), branch.as_deref())
                 && stale_after_seconds.is_none_or(|stale_after_seconds| {
                     claim_is_stale(
                         claim,
@@ -573,6 +579,66 @@ fn list_claims(
 
     print_claims_report(&report);
     Ok(())
+}
+
+fn prune_claims(
+    json: bool,
+    agent: Option<String>,
+    pair: Option<String>,
+    branch: Option<String>,
+    stale_after: String,
+    apply: bool,
+) -> Result<(), AppError> {
+    if let Some(agent) = &agent {
+        validate_agent_name(agent)?;
+    }
+    if let Some(pair) = &pair {
+        validate_pair_name(pair)?;
+    }
+    let stale_after_seconds = parse_duration_seconds(&stale_after)?;
+    let now_unix = current_unix_timestamp()?;
+
+    let repository = GitRepository::discover(".")?;
+    if let Some(branch) = &branch {
+        ensure_branch_name_is_valid(&repository, branch)?;
+    }
+
+    let store = ClaimStore::for_repository(&repository);
+    let mut claims = store.load()?;
+    let pruned_claims = claims
+        .claims()
+        .iter()
+        .filter(|claim| {
+            claim_matches_filters(claim, agent.as_deref(), pair.as_deref(), branch.as_deref())
+                && claim_is_stale(claim, now_unix, stale_after_seconds)
+        })
+        .cloned()
+        .collect::<Vec<_>>();
+
+    if apply {
+        for claim in &pruned_claims {
+            claims.remove(&claim.agent, &claim.pair, &claim.branch);
+        }
+        if !pruned_claims.is_empty() {
+            store.save(&claims)?;
+        }
+    }
+
+    let report = PruneClaimsReport {
+        applied: apply,
+        repository_root: repository.root().display().to_string(),
+        claims_path: store.path().display().to_string(),
+        filters: ClaimsFilterReport {
+            agent,
+            pair,
+            branch,
+            stale_after_seconds: Some(stale_after_seconds),
+        },
+        pruned_claims,
+        remaining_claim_count: claims.claims().len(),
+    };
+
+    print_prune_claims_report(&report, json)
 }
 
 fn unclaim_current_scope(
@@ -1270,6 +1336,52 @@ fn print_claims_report(report: &ClaimsReport) {
     }
 }
 
+fn print_prune_claims_report(report: &PruneClaimsReport, json: bool) -> Result<(), AppError> {
+    if json {
+        println!("{}", serde_json::to_string_pretty(report)?);
+        return Ok(());
+    }
+
+    println!(
+        "Prune claims: {}",
+        if report.applied { "applied" } else { "dry-run" }
+    );
+    println!("Repository: {}", report.repository_root);
+    println!("Claims metadata: {}", report.claims_path);
+    println!(
+        "Filters: agent={}, pair={}, branch={}, stale_after={}s",
+        report.filters.agent.as_deref().unwrap_or("*"),
+        report.filters.pair.as_deref().unwrap_or("*"),
+        report.filters.branch.as_deref().unwrap_or("*"),
+        report
+            .filters
+            .stale_after_seconds
+            .expect("prune reports always include a stale window")
+    );
+
+    if report.pruned_claims.is_empty() {
+        println!("No stale claims matched.");
+        return Ok(());
+    }
+
+    println!("Matched claims:");
+    for claim in &report.pruned_claims {
+        println!(
+            "- {}: {} on {} (created_at_unix: {})",
+            claim.agent, claim.pair, claim.branch, claim.created_at_unix
+        );
+    }
+
+    if report.applied {
+        println!("Removed {} stale claim(s).", report.pruned_claims.len());
+    } else {
+        println!("No metadata changed. Rerun with --apply to remove these claims.");
+    }
+    println!("Remaining claims: {}", report.remaining_claim_count);
+
+    Ok(())
+}
+
 fn print_handoff_report(report: &HandoffReport, json: bool) -> Result<(), AppError> {
     if json {
         println!("{}", serde_json::to_string_pretty(report)?);
@@ -1473,6 +1585,16 @@ struct ClaimsReport {
 }
 
 #[derive(Debug, Serialize)]
+struct PruneClaimsReport {
+    applied: bool,
+    repository_root: String,
+    claims_path: String,
+    filters: ClaimsFilterReport,
+    pruned_claims: Vec<AgentClaim>,
+    remaining_claim_count: usize,
+}
+
+#[derive(Debug, Serialize)]
 struct ClaimsFilterReport {
     agent: Option<String>,
     pair: Option<String>,
@@ -1648,6 +1770,17 @@ fn current_unix_timestamp() -> Result<u64, AppError> {
 
 fn claim_is_stale(claim: &AgentClaim, now_unix: u64, stale_after_seconds: u64) -> bool {
     now_unix.saturating_sub(claim.created_at_unix) >= stale_after_seconds
+}
+
+fn claim_matches_filters(
+    claim: &AgentClaim,
+    agent: Option<&str>,
+    pair: Option<&str>,
+    branch: Option<&str>,
+) -> bool {
+    agent.is_none_or(|agent| claim.agent == agent)
+        && pair.is_none_or(|pair| claim.pair == pair)
+        && branch.is_none_or(|branch| claim.branch == branch)
 }
 
 fn parse_duration_seconds(value: &str) -> Result<u64, AppError> {
