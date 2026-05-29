@@ -71,6 +71,10 @@ pub enum CliCommand {
         /// Agent/session name to check for claim conflicts.
         #[arg(long)]
         agent: Option<String>,
+
+        /// Mark claim conflicts older than this duration as stale, for example 30m, 2h, or 1d.
+        #[arg(long, requires = "agent")]
+        stale_after: Option<String>,
     },
 
     /// Assert that the current branch matches expected repository state.
@@ -339,6 +343,8 @@ mod tests {
             "api",
             "--agent",
             "codex",
+            "--stale-after",
+            "2h",
         ]);
 
         assert_eq!(
@@ -347,7 +353,19 @@ mod tests {
                 json: true,
                 name: "api".to_owned(),
                 agent: Some("codex".to_owned()),
+                stale_after: Some("2h".to_owned()),
             }
+        );
+    }
+
+    #[test]
+    fn preflight_stale_after_requires_agent() {
+        let error = Cli::try_parse_from(["zaphod", "preflight", "--stale-after", "2h"])
+            .expect_err("reject stale claim window without agent");
+
+        assert_eq!(
+            error.kind(),
+            clap::error::ErrorKind::MissingRequiredArgument
         );
     }
 

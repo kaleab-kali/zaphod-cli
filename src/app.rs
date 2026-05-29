@@ -27,7 +27,12 @@ pub fn run(cli: Cli) -> Result<(), AppError> {
             }
         }
         CliCommand::Switch { dry_run, name } => switch_branches(&name, dry_run),
-        CliCommand::Preflight { json, name, agent } => run_preflight(&name, json, agent),
+        CliCommand::Preflight {
+            json,
+            name,
+            agent,
+            stale_after,
+        } => run_preflight(&name, json, agent, stale_after),
         CliCommand::Assert {
             json,
             pair,
@@ -235,16 +240,26 @@ fn switch_branches(name: &str, dry_run: bool) -> Result<(), AppError> {
     Ok(())
 }
 
-fn run_preflight(name: &str, json: bool, agent: Option<String>) -> Result<(), AppError> {
+fn run_preflight(
+    name: &str,
+    json: bool,
+    agent: Option<String>,
+    stale_after: Option<String>,
+) -> Result<(), AppError> {
     if let Some(agent) = &agent {
         validate_agent_name(agent)?;
     }
+    let stale_after_seconds = stale_after
+        .as_deref()
+        .map(parse_duration_seconds)
+        .transpose()?;
 
     match load_status_context(name) {
         Ok(context) => {
             let mut report = PreflightReport::from_status_context(&context);
             let claim_conflict = if let Some(agent) = agent {
-                let claim_report = build_preflight_claim_report(&context, agent)?;
+                let claim_report =
+                    build_preflight_claim_report(&context, agent, stale_after_seconds)?;
                 let conflict = claim_report.conflict.clone();
                 report.ready = report.ready && claim_report.claim_allowed;
                 report.claim = Some(claim_report);
@@ -288,16 +303,33 @@ fn run_preflight(name: &str, json: bool, agent: Option<String>) -> Result<(), Ap
 fn build_preflight_claim_report(
     context: &StatusContext,
     agent: String,
+    stale_after_seconds: Option<u64>,
 ) -> Result<PreflightClaimReport, AppError> {
     let store = ClaimStore::for_repository(&context.repository);
     let claims = store.load()?;
     let conflict = claims
         .conflict_for_scope(&agent, &context.status.pair, &context.status.current)
         .cloned();
+    let now_unix = if stale_after_seconds.is_some() && conflict.is_some() {
+        Some(current_unix_timestamp()?)
+    } else {
+        None
+    };
+    let conflict_stale = conflict.as_ref().and_then(|conflict| {
+        stale_after_seconds.map(|stale_after_seconds| {
+            claim_is_stale(
+                conflict,
+                now_unix.expect("stale claim conflict reporting has a timestamp"),
+                stale_after_seconds,
+            )
+        })
+    });
 
     Ok(PreflightClaimReport {
         requested_agent: agent,
         claim_allowed: conflict.is_none(),
+        stale_after_seconds,
+        conflict_stale,
         conflict,
     })
 }
@@ -675,6 +707,8 @@ fn show_handoff(json: bool, pair_name: String, agent: Option<String>) -> Result<
         report.claim = Some(PreflightClaimReport {
             requested_agent: agent,
             claim_allowed: conflict.is_none(),
+            stale_after_seconds: None,
+            conflict_stale: None,
             conflict,
         });
     }
@@ -1126,7 +1160,12 @@ fn print_preflight_report(report: &PreflightReport) {
         if claim.claim_allowed {
             println!("Claim: allowed for {}", claim.requested_agent);
         } else if let Some(conflict) = &claim.conflict {
-            println!("Claim: refused (claimed by {})", conflict.agent);
+            let stale = match (claim.conflict_stale, claim.stale_after_seconds) {
+                (Some(true), Some(seconds)) => format!(", stale after {seconds}s"),
+                (Some(false), Some(seconds)) => format!(", not stale after {seconds}s"),
+                _ => String::new(),
+            };
+            println!("Claim: refused (claimed by {}{})", conflict.agent, stale);
         }
     }
 
@@ -1386,6 +1425,8 @@ struct PreflightErrorReport {
 struct PreflightClaimReport {
     requested_agent: String,
     claim_allowed: bool,
+    stale_after_seconds: Option<u64>,
+    conflict_stale: Option<bool>,
     conflict: Option<AgentClaim>,
 }
 

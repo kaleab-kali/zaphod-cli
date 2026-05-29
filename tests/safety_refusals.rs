@@ -207,6 +207,66 @@ fn preflight_json_reports_claim_conflict() {
 }
 
 #[test]
+fn preflight_json_reports_stale_claim_conflict() {
+    let dir = TestDir::new("zaphod-cli-safety");
+    init_repo_with_pair_branches(dir.path());
+    let pair = zaphod(dir.path(), ["pair", "feature/api", "feature/ui"]);
+    assert_success(&pair);
+    let metadata_dir = dir.git_dir().join("zaphod");
+    fs::create_dir_all(&metadata_dir).expect("create zaphod metadata directory");
+    fs::write(
+        metadata_dir.join("claims.toml"),
+        r#"[[claims]]
+agent = "codex"
+pair = "default"
+branch = "feature/api"
+created_at_unix = 1
+"#,
+    )
+    .expect("write claims metadata");
+
+    let output = zaphod(
+        dir.path(),
+        [
+            "preflight",
+            "--json",
+            "--agent",
+            "other",
+            "--stale-after",
+            "1d",
+        ],
+    );
+
+    assert!(!output.status.success());
+    assert_eq!(output.status.code(), Some(3));
+    let report: serde_json::Value = serde_json::from_slice(&output.stdout).expect("preflight json");
+    assert_eq!(report["ready"], false);
+    assert_eq!(report["claim"]["requested_agent"], "other");
+    assert_eq!(report["claim"]["claim_allowed"], false);
+    assert_eq!(report["claim"]["stale_after_seconds"], 86_400);
+    assert_eq!(report["claim"]["conflict_stale"], true);
+    assert_eq!(report["claim"]["conflict"]["agent"], "codex");
+}
+
+#[test]
+fn preflight_rejects_invalid_stale_claim_window() {
+    let dir = TestDir::new("zaphod-cli-safety");
+    init_repo_with_pair_branches(dir.path());
+
+    let output = zaphod(
+        dir.path(),
+        ["preflight", "--agent", "codex", "--stale-after", "0h"],
+    );
+
+    assert!(!output.status.success());
+    assert_eq!(output.status.code(), Some(2));
+    assert_stderr_contains(
+        &output,
+        "duration '0h' is invalid; use a positive number followed by s, m, h, or d",
+    );
+}
+
+#[test]
 fn assert_json_reports_wrong_side() {
     let dir = TestDir::new("zaphod-cli-safety");
     init_repo_with_pair_branches(dir.path());

@@ -12,6 +12,8 @@ and this project intends to follow semantic versioning once releases begin.
 - `claims --agent`, `claims --pair`, and `claims --branch` filters for
   script-friendly agent claim lookups.
 - `claims --stale-after` for read-only stale agent claim detection.
+- `preflight --stale-after` for reporting stale claim conflicts without
+  automatically overriding them.
 - `handoff` command for read-only agent continuation snapshots with pair,
   worktree, Git state, and claim details.
 - `unclaim --branch` for releasing stale agent claims without switching
