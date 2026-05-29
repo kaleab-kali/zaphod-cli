@@ -120,6 +120,54 @@ refusals over convenience.
 
 ## Installation
 
+### GitHub Release Binaries
+
+Download the latest binary for your platform from the
+[GitHub Releases page](https://github.com/kaleab-kali/zaphod-cli/releases).
+
+Linux:
+
+```sh
+curl -LO https://github.com/kaleab-kali/zaphod-cli/releases/latest/download/zaphod-linux
+curl -LO https://github.com/kaleab-kali/zaphod-cli/releases/latest/download/zaphod-linux.sha256
+sha256sum -c zaphod-linux.sha256
+chmod +x zaphod-linux
+sudo install -m 0755 zaphod-linux /usr/local/bin/zaphod
+```
+
+macOS:
+
+```sh
+curl -LO https://github.com/kaleab-kali/zaphod-cli/releases/latest/download/zaphod-macos
+curl -LO https://github.com/kaleab-kali/zaphod-cli/releases/latest/download/zaphod-macos.sha256
+shasum -a 256 -c zaphod-macos.sha256
+chmod +x zaphod-macos
+sudo install -m 0755 zaphod-macos /usr/local/bin/zaphod
+```
+
+Windows PowerShell:
+
+```powershell
+Invoke-WebRequest -Uri https://github.com/kaleab-kali/zaphod-cli/releases/latest/download/zaphod-windows.exe -OutFile zaphod-windows.exe
+Invoke-WebRequest -Uri https://github.com/kaleab-kali/zaphod-cli/releases/latest/download/zaphod-windows.exe.sha256 -OutFile zaphod-windows.exe.sha256
+$expected = (Get-Content .\zaphod-windows.exe.sha256).Split(' ')[0]
+$actual = (Get-FileHash .\zaphod-windows.exe -Algorithm SHA256).Hash.ToLower()
+if ($actual -ne $expected) { throw "checksum mismatch" }
+New-Item -ItemType Directory -Force "$HOME\bin"
+Move-Item .\zaphod-windows.exe "$HOME\bin\zaphod.exe"
+```
+
+Add `$HOME\bin` to your `PATH` if it is not already there.
+
+Then confirm the binary is available:
+
+```sh
+zaphod --version
+zaphod --help
+```
+
+### From Source
+
 Zaphod is not published to crates.io yet. Install from a local checkout:
 
 ```sh
