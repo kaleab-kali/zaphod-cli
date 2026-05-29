@@ -418,6 +418,36 @@ fn claims_rejects_invalid_filter_values() {
 }
 
 #[test]
+fn prune_claims_rejects_invalid_inputs() {
+    let dir = TestDir::new("zaphod-cli-safety");
+    init_repo_with_pair_branches(dir.path());
+
+    let output = zaphod(dir.path(), ["prune-claims", "--stale-after", "soon"]);
+
+    assert!(!output.status.success());
+    assert_eq!(output.status.code(), Some(2));
+    assert_stderr_contains(
+        &output,
+        "duration 'soon' is invalid; use a positive number followed by s, m, h, or d",
+    );
+
+    let output = zaphod(
+        dir.path(),
+        [
+            "prune-claims",
+            "--branch",
+            "feature..api",
+            "--stale-after",
+            "1d",
+        ],
+    );
+
+    assert!(!output.status.success());
+    assert_eq!(output.status.code(), Some(2));
+    assert_stderr_contains(&output, "branch name 'feature..api' is invalid");
+}
+
+#[test]
 fn unclaim_reports_missing_claim() {
     let dir = TestDir::new("zaphod-cli-safety");
     init_repo_with_pair_branches(dir.path());

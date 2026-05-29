@@ -134,6 +134,33 @@ pub enum CliCommand {
         stale_after: Option<String>,
     },
 
+    /// Prune stale agent session claims. Defaults to dry-run.
+    PruneClaims {
+        /// Emit machine-readable JSON.
+        #[arg(long)]
+        json: bool,
+
+        /// Filter claims by agent/session name.
+        #[arg(long)]
+        agent: Option<String>,
+
+        /// Filter claims by pair name.
+        #[arg(long)]
+        pair: Option<String>,
+
+        /// Filter claims by branch name.
+        #[arg(long)]
+        branch: Option<String>,
+
+        /// Select claims older than this duration, for example 30m, 2h, or 1d.
+        #[arg(long)]
+        stale_after: String,
+
+        /// Remove matching stale claims. Without this flag, the command is a dry-run.
+        #[arg(long)]
+        apply: bool,
+    },
+
     /// Release an agent session claim for the current pair and branch.
     Unclaim {
         /// Emit machine-readable JSON.
@@ -434,6 +461,36 @@ mod tests {
                 pair: Some("api".to_owned()),
                 branch: Some("feature/api".to_owned()),
                 stale_after: Some("2h".to_owned()),
+            }
+        );
+    }
+
+    #[test]
+    fn parses_prune_claims_command() {
+        let cli = Cli::parse_from([
+            "zaphod",
+            "prune-claims",
+            "--json",
+            "--agent",
+            "codex",
+            "--pair",
+            "api",
+            "--branch",
+            "feature/api",
+            "--stale-after",
+            "2h",
+            "--apply",
+        ]);
+
+        assert_eq!(
+            cli.command,
+            CliCommand::PruneClaims {
+                json: true,
+                agent: Some("codex".to_owned()),
+                pair: Some("api".to_owned()),
+                branch: Some("feature/api".to_owned()),
+                stale_after: "2h".to_owned(),
+                apply: true,
             }
         );
     }

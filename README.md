@@ -92,6 +92,8 @@ claims add a lightweight coordination layer:
 zaphod claim --agent codex --pair search --json
 # work on the branch
 zaphod claims --pair search --stale-after 2h --json
+zaphod prune-claims --pair search --stale-after 2h --json
+zaphod prune-claims --pair search --stale-after 2h --apply
 zaphod unclaim --agent codex --pair search
 zaphod unclaim --agent codex --pair search --branch feature/api
 ```
@@ -102,7 +104,7 @@ start on the same pair and branch.
 
 Stale-claim filters help automation notice abandoned sessions after crashes,
 terminal closes, or interrupted agent runs. They are read-only, so cleanup
-still requires an explicit `unclaim`.
+still requires an explicit `unclaim` or `prune-claims --apply`.
 
 For handoffs between agents or terminals, `zaphod handoff --json` captures the
 current branch, selected pair status, active claims, and claim readiness in one
@@ -365,6 +367,21 @@ zaphod claims --pair api --stale-after 2h --json
 Use filters when a script needs to check a specific agent, pair, branch, or
 stale-claim window without parsing unrelated claim entries. Durations use a
 positive number followed by `s`, `m`, `h`, or `d`.
+
+### `zaphod prune-claims`
+
+Preview or remove stale agent session claims:
+
+```sh
+zaphod prune-claims --stale-after 2h
+zaphod prune-claims --pair api --stale-after 2h --json
+zaphod prune-claims --pair api --stale-after 2h --apply
+```
+
+`prune-claims` defaults to dry-run mode and does not change metadata unless
+`--apply` is present. Use `--agent`, `--pair`, and `--branch` to narrow the
+cleanup scope. The command only edits `.git/zaphod/claims.toml`; it never
+switches branches, deletes files, or changes Git history.
 
 ### `zaphod unclaim`
 
