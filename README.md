@@ -18,6 +18,7 @@ Zaphod is in early development. The current `0.1.x` CLI can:
 - Preview a safe switch without changing branches.
 - List, rename, and remove branch pairs.
 - Run preflight checks for humans and coding agents.
+- Assert the expected branch, pair, or pair side before scripted work starts.
 - Refuse unsafe switches when the worktree is dirty or Git is mid-operation.
 - Emit JSON status for scripts.
 - Diagnose repository, metadata, and branch-pair health in text or JSON.
@@ -56,6 +57,7 @@ Coding agents can use Zaphod as a preflight gate:
 
 ```sh
 zaphod preflight --json
+zaphod assert --pair api --side left --json
 zaphod status --json
 zaphod doctor --json
 zaphod switch --dry-run
@@ -63,6 +65,20 @@ zaphod switch --dry-run
 
 This lets an agent check branch, worktree, merge, rebase, and pair state before
 editing files or switching branches.
+
+This matters most when an agent is operating from instructions such as "make
+the API change on the backend branch, then update the UI branch." Without a
+guard, the agent has to infer whether the current branch is the correct place
+to edit. With Zaphod, the script can make that expectation explicit:
+
+```sh
+zaphod assert --pair search --side left --json
+```
+
+If the repository is on the UI side, outside the pair, detached, or missing the
+expected pair, the command fails before any file edits happen. The agent can
+then stop, report the mismatch, or ask for human approval instead of continuing
+on the wrong branch.
 
 ## Safety Model
 
@@ -213,6 +229,24 @@ Preflight is read-only. It reports the requested pair, current branch, paired
 target branch, worktree state, Git operation state, switch readiness, and any
 refusal reasons. It exits successfully when the pair is ready and exits with an
 error when the repository is not ready.
+
+### `zaphod assert`
+
+Fail fast when the current repository state does not match an expected branch,
+pair, or pair side:
+
+```sh
+zaphod assert --branch feature/api
+zaphod assert --pair api
+zaphod assert --side left
+zaphod assert --pair api --side right --json
+```
+
+If no selector is provided, `assert` checks that the current branch belongs to
+the default pair. `--side` uses the default pair unless `--pair` is provided.
+
+This command is read-only and is designed for scripts and coding agents that
+need to prove they are in the right place before editing files.
 
 ### `zaphod status`
 

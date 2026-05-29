@@ -1,4 +1,4 @@
-use clap::{Parser, Subcommand};
+use clap::{Parser, Subcommand, ValueEnum};
 use clap_complete::Shell;
 
 #[derive(Debug, Parser)]
@@ -69,6 +69,25 @@ pub enum CliCommand {
         name: String,
     },
 
+    /// Assert that the current branch matches expected repository state.
+    Assert {
+        /// Emit machine-readable JSON.
+        #[arg(long)]
+        json: bool,
+
+        /// Pair name to assert membership in.
+        #[arg(long)]
+        pair: Option<String>,
+
+        /// Branch name to assert as the current branch.
+        #[arg(long)]
+        branch: Option<String>,
+
+        /// Pair side to assert as the current branch.
+        #[arg(long)]
+        side: Option<PairSide>,
+    },
+
     /// Remove a branch pair.
     Unpair {
         /// Pair name.
@@ -106,9 +125,15 @@ pub enum CliCommand {
     },
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, ValueEnum)]
+pub enum PairSide {
+    Left,
+    Right,
+}
+
 #[cfg(test)]
 mod tests {
-    use super::{Cli, CliCommand};
+    use super::{Cli, CliCommand, PairSide};
     use clap::{CommandFactory, Parser};
     use clap_complete::Shell;
 
@@ -237,6 +262,31 @@ mod tests {
             CliCommand::Preflight {
                 json: true,
                 name: "api".to_owned(),
+            }
+        );
+    }
+
+    #[test]
+    fn parses_assert_command() {
+        let cli = Cli::parse_from([
+            "zaphod",
+            "assert",
+            "--json",
+            "--pair",
+            "api",
+            "--branch",
+            "feature/api",
+            "--side",
+            "left",
+        ]);
+
+        assert_eq!(
+            cli.command,
+            CliCommand::Assert {
+                json: true,
+                pair: Some("api".to_owned()),
+                branch: Some("feature/api".to_owned()),
+                side: Some(PairSide::Left),
             }
         );
     }

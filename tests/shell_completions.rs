@@ -10,6 +10,7 @@ fn generates_bash_completions() {
 
     assert_success(&output);
     assert_stdout_contains(&output, "_zaphod()");
+    assert_stdout_contains(&output, "assert");
     assert_stdout_contains(&output, "completions");
     assert_stdout_contains(&output, "status");
     assert_stdout_contains(&output, "switch");

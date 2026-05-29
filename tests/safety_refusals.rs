@@ -158,6 +158,54 @@ fn preflight_json_reports_missing_pair() {
 }
 
 #[test]
+fn assert_json_reports_wrong_side() {
+    let dir = TestDir::new("zaphod-cli-safety");
+    init_repo_with_pair_branches(dir.path());
+    let pair = zaphod(dir.path(), ["pair", "feature/api", "feature/ui"]);
+    assert_success(&pair);
+
+    let output = zaphod(dir.path(), ["assert", "--json", "--side", "right"]);
+
+    assert!(!output.status.success());
+    assert_eq!(output.status.code(), Some(2));
+    let report: serde_json::Value = serde_json::from_slice(&output.stdout).expect("assert json");
+    assert_eq!(report["ok"], false);
+    assert_eq!(report["pair"]["name"], "default");
+    assert_eq!(report["pair"]["current_side"], "left");
+    assert_eq!(report["pair"]["expected_side"], "right");
+    assert!(
+        report["failures"][0]
+            .as_str()
+            .expect("failure message")
+            .contains("not the right side")
+    );
+    assert_stderr_contains(&output, "assertion failed:");
+}
+
+#[test]
+fn assert_json_reports_wrong_branch_without_pair_requirement() {
+    let dir = TestDir::new("zaphod-cli-safety");
+    init_repo_with_pair_branches(dir.path());
+
+    let output = zaphod(dir.path(), ["assert", "--json", "--branch", "main"]);
+
+    assert!(!output.status.success());
+    assert_eq!(output.status.code(), Some(2));
+    let report: serde_json::Value = serde_json::from_slice(&output.stdout).expect("assert json");
+    assert_eq!(report["ok"], false);
+    assert_eq!(report["current_branch"], "feature/api");
+    assert_eq!(report["expected_branch"], "main");
+    assert!(report["pair"].is_null());
+    assert!(
+        report["failures"][0]
+            .as_str()
+            .expect("failure message")
+            .contains("expected branch 'main'")
+    );
+    assert_stderr_contains(&output, "assertion failed:");
+}
+
+#[test]
 fn switch_rejects_rebase_in_progress() {
     let dir = TestDir::new("zaphod-cli-safety");
     init_repo_with_pair_branches(dir.path());

@@ -1,4 +1,4 @@
-use crate::cli::{Cli, CliCommand};
+use crate::cli::{Cli, CliCommand, PairSide};
 use crate::core::{
     BranchPair, GitState, PairError, PairStatus, RefusalReason, StatusError, WorktreeStatus,
 };
@@ -26,6 +26,12 @@ pub fn run(cli: Cli) -> Result<(), AppError> {
         }
         CliCommand::Switch { dry_run, name } => switch_branches(&name, dry_run),
         CliCommand::Preflight { json, name } => run_preflight(&name, json),
+        CliCommand::Assert {
+            json,
+            pair,
+            branch,
+            side,
+        } => assert_repository_state(json, pair, branch, side),
         CliCommand::Doctor { json } => run_doctor(json),
         CliCommand::Completions { shell } => generate_completions(shell),
     }
@@ -239,6 +245,104 @@ fn run_preflight(name: &str, json: bool) -> Result<(), AppError> {
             }
             Err(error)
         }
+    }
+}
+
+fn assert_repository_state(
+    json: bool,
+    pair_name: Option<String>,
+    expected_branch: Option<String>,
+    expected_side: Option<PairSide>,
+) -> Result<(), AppError> {
+    let repository = GitRepository::discover(".")?;
+    let current_branch = repository.current_branch()?;
+    let effective_pair = pair_name
+        .or_else(|| expected_side.map(|_| "default".to_owned()))
+        .or_else(|| {
+            if expected_branch.is_none() {
+                Some("default".to_owned())
+            } else {
+                None
+            }
+        });
+    let mut failures = Vec::new();
+
+    if let Some(expected_branch) = &expected_branch
+        && current_branch != *expected_branch
+    {
+        failures.push(format!(
+            "current branch '{current_branch}' did not match expected branch '{expected_branch}'"
+        ));
+    }
+
+    let mut pair_report = None;
+    if let Some(pair_name) = effective_pair {
+        let store = MetadataStore::for_repository(&repository);
+        let pairs = store.load()?;
+
+        match pairs.get(&pair_name) {
+            Some(pair) => {
+                let current_side = pair_side_for_branch(pair, &current_branch);
+
+                if current_side.is_none() {
+                    failures.push(format!(
+                        "current branch '{current_branch}' is not part of pair '{pair_name}'"
+                    ));
+                }
+
+                if let Some(expected_side) = expected_side
+                    && current_side != Some(expected_side)
+                {
+                    failures.push(format!(
+                        "current branch '{current_branch}' is not the {} side of pair '{pair_name}'",
+                        pair_side_name(expected_side)
+                    ));
+                }
+
+                pair_report = Some(AssertPairReport {
+                    name: pair.name.clone(),
+                    left: Some(pair.left.clone()),
+                    right: Some(pair.right.clone()),
+                    configured: true,
+                    current_side: current_side.map(pair_side_name),
+                    expected_side: expected_side.map(pair_side_name),
+                });
+            }
+            None => {
+                failures.push(format!("pair '{pair_name}' was not found"));
+                pair_report = Some(AssertPairReport {
+                    name: pair_name,
+                    left: None,
+                    right: None,
+                    configured: false,
+                    current_side: None,
+                    expected_side: expected_side.map(pair_side_name),
+                });
+            }
+        }
+    }
+
+    let report = AssertReport {
+        ok: failures.is_empty(),
+        repository_root: repository.root().display().to_string(),
+        current_branch,
+        expected_branch,
+        pair: pair_report,
+        failures,
+    };
+
+    if json {
+        println!("{}", serde_json::to_string_pretty(&report)?);
+    } else {
+        print_assert_report(&report);
+    }
+
+    if report.ok {
+        Ok(())
+    } else {
+        Err(AppError::AssertFailed {
+            failures: report.failures,
+        })
     }
 }
 
@@ -675,6 +779,36 @@ fn print_preflight_report(report: &PreflightReport) {
     }
 }
 
+fn print_assert_report(report: &AssertReport) {
+    println!("Assert: {}", if report.ok { "passed" } else { "failed" });
+    println!("Repository: {}", report.repository_root);
+    println!("Current: {}", report.current_branch);
+
+    if let Some(expected_branch) = &report.expected_branch {
+        println!("Expected branch: {expected_branch}");
+    }
+
+    if let Some(pair) = &report.pair {
+        if pair.configured {
+            let left = pair.left.as_deref().unwrap_or("unknown");
+            let right = pair.right.as_deref().unwrap_or("unknown");
+            println!("Pair: {} ({} <-> {})", pair.name, left, right);
+            if let Some(current_side) = pair.current_side {
+                println!("Current side: {current_side}");
+            }
+            if let Some(expected_side) = pair.expected_side {
+                println!("Expected side: {expected_side}");
+            }
+        } else {
+            println!("Pair: {} (missing)", pair.name);
+        }
+    }
+
+    for failure in &report.failures {
+        println!("Failure: {failure}");
+    }
+}
+
 fn format_branch_health(left_exists: bool, right_exists: bool, left: &str, right: &str) -> String {
     match (left_exists, right_exists) {
         (true, true) => "ok".to_owned(),
@@ -744,6 +878,26 @@ struct PreflightErrorReport {
     kind: &'static str,
     message: String,
     exit_code: u8,
+}
+
+#[derive(Debug, Serialize)]
+struct AssertReport {
+    ok: bool,
+    repository_root: String,
+    current_branch: String,
+    expected_branch: Option<String>,
+    pair: Option<AssertPairReport>,
+    failures: Vec<String>,
+}
+
+#[derive(Debug, Serialize)]
+struct AssertPairReport {
+    name: String,
+    left: Option<String>,
+    right: Option<String>,
+    configured: bool,
+    current_side: Option<&'static str>,
+    expected_side: Option<&'static str>,
 }
 
 #[derive(Debug, Serialize)]
@@ -858,6 +1012,23 @@ struct DoctorPairReport {
     summary: String,
 }
 
+fn pair_side_for_branch(pair: &BranchPair, branch: &str) -> Option<PairSide> {
+    if branch == pair.left {
+        Some(PairSide::Left)
+    } else if branch == pair.right {
+        Some(PairSide::Right)
+    } else {
+        None
+    }
+}
+
+fn pair_side_name(side: PairSide) -> &'static str {
+    match side {
+        PairSide::Left => "left",
+        PairSide::Right => "right",
+    }
+}
+
 fn ensure_branch_exists(repository: &GitRepository, branch: &str) -> Result<(), AppError> {
     if repository.branch_exists(branch)? {
         return Ok(());
@@ -880,6 +1051,7 @@ fn ensure_branch_name_is_valid(repository: &GitRepository, branch: &str) -> Resu
 
 #[derive(Debug)]
 pub enum AppError {
+    AssertFailed { failures: Vec<String> },
     BranchNotFound { branch: String },
     DoctorFailed,
     Git { source: GitError },
@@ -897,6 +1069,9 @@ pub enum AppError {
 impl Display for AppError {
     fn fmt(&self, formatter: &mut Formatter<'_>) -> fmt::Result {
         match self {
+            Self::AssertFailed { failures } => {
+                write!(formatter, "assertion failed: {}", failures.join("; "))
+            }
             Self::BranchNotFound { branch } => write!(formatter, "branch '{branch}' was not found"),
             Self::DoctorFailed => write!(formatter, "doctor found problems"),
             Self::Git { source } => Display::fmt(source, formatter),
@@ -937,7 +1112,8 @@ impl Error for AppError {
             Self::Pair { source } => Some(source),
             Self::Serialize { source } => Some(source),
             Self::Status { source } => Some(source),
-            Self::BranchNotFound { .. }
+            Self::AssertFailed { .. }
+            | Self::BranchNotFound { .. }
             | Self::DoctorFailed
             | Self::InvalidBranchName { .. }
             | Self::PairAlreadyExists { .. }
@@ -951,7 +1127,8 @@ impl Error for AppError {
 impl AppError {
     pub fn exit_code(&self) -> u8 {
         match self {
-            Self::BranchNotFound { .. }
+            Self::AssertFailed { .. }
+            | Self::BranchNotFound { .. }
             | Self::InvalidBranchName { .. }
             | Self::Pair { .. }
             | Self::PairAlreadyExists { .. }
@@ -968,6 +1145,7 @@ impl AppError {
 
     pub fn kind(&self) -> &'static str {
         match self {
+            Self::AssertFailed { .. } => "assert_failed",
             Self::BranchNotFound { .. } => "branch_not_found",
             Self::DoctorFailed => "doctor_failed",
             Self::Git { source } => source.kind(),
