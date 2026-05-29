@@ -41,6 +41,28 @@ fn status_error_can_emit_json_error() {
 }
 
 #[test]
+fn handoff_json_reports_directory_outside_git_repository() {
+    let dir = TestDir::new("zaphod-cli-safety");
+
+    let output = zaphod(dir.path(), ["handoff", "--json"]);
+
+    assert!(!output.status.success());
+    assert_eq!(output.status.code(), Some(2));
+    let report: serde_json::Value = serde_json::from_slice(&output.stdout).expect("handoff json");
+    assert_eq!(report["ok"], false);
+    assert_eq!(report["requested_pair"], "default");
+    assert!(report["repository_root"].is_null());
+    assert!(report["current_branch"].is_null());
+    assert_eq!(report["errors"][0]["kind"], "not_repository");
+    assert_eq!(
+        report["errors"][0]["message"],
+        "not inside a Git repository"
+    );
+    assert_eq!(report["errors"][0]["exit_code"], 2);
+    assert_stderr_contains(&output, "not inside a Git repository");
+}
+
+#[test]
 fn status_rejects_detached_head() {
     let dir = TestDir::new("zaphod-cli-safety");
     init_repo_with_pair_branches(dir.path());
