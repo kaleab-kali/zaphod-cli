@@ -37,6 +37,7 @@ pub fn run(cli: Cli) -> Result<(), AppError> {
         CliCommand::Claim { json, agent, pair } => claim_current_scope(json, agent, pair),
         CliCommand::Claims { json } => list_claims(json),
         CliCommand::Unclaim { json, agent, pair } => unclaim_current_scope(json, agent, pair),
+        CliCommand::Handoff { json, name, agent } => show_handoff(json, name, agent),
         CliCommand::Doctor { json } => run_doctor(json),
         CliCommand::Completions { shell } => generate_completions(shell),
     }
@@ -513,6 +514,112 @@ fn unclaim_current_scope(json: bool, agent: String, pair_name: String) -> Result
     print_claim_operation_report(&report, json)?;
 
     Ok(())
+}
+
+fn show_handoff(json: bool, pair_name: String, agent: Option<String>) -> Result<(), AppError> {
+    if let Some(agent) = &agent {
+        validate_agent_name(agent)?;
+    }
+
+    let mut report = HandoffReport {
+        ok: false,
+        generated_at_unix: current_unix_timestamp()?,
+        requested_pair: pair_name.clone(),
+        requested_agent: agent,
+        repository_root: None,
+        current_branch: None,
+        worktree: None,
+        git_state: None,
+        pair: None,
+        claims: Vec::new(),
+        claim: None,
+        errors: Vec::new(),
+    };
+
+    let repository = match GitRepository::discover(".") {
+        Ok(repository) => repository,
+        Err(error) => return finish_handoff_with_error(report, AppError::from(error), json),
+    };
+    report.repository_root = Some(repository.root().display().to_string());
+
+    let current_branch = match repository.current_branch() {
+        Ok(current_branch) => current_branch,
+        Err(error) => return finish_handoff_with_error(report, AppError::from(error), json),
+    };
+    report.current_branch = Some(current_branch.clone());
+
+    let is_dirty = match repository.is_dirty() {
+        Ok(is_dirty) => is_dirty,
+        Err(error) => return finish_handoff_with_error(report, AppError::from(error), json),
+    };
+    report.worktree = Some(WorktreeStatus::from_dirty(is_dirty));
+
+    let is_merge_in_progress = repository.is_merge_in_progress();
+    let is_rebase_in_progress = repository.is_rebase_in_progress();
+    report.git_state = Some(GitState::from_repository_state(
+        is_merge_in_progress,
+        is_rebase_in_progress,
+    ));
+
+    let claim_store = ClaimStore::for_repository(&repository);
+    let claims = match claim_store.load() {
+        Ok(claims) => claims,
+        Err(error) => return finish_handoff_with_error(report, AppError::from(error), json),
+    };
+    report.claims = claims.claims().to_vec();
+
+    let store = MetadataStore::for_repository(&repository);
+    let pairs = match store.load() {
+        Ok(pairs) => pairs,
+        Err(error) => return finish_handoff_with_error(report, AppError::from(error), json),
+    };
+    let pair = match pairs.get(&pair_name) {
+        Some(pair) => pair,
+        None => {
+            return finish_handoff_with_error(
+                report,
+                AppError::PairNotFound { name: pair_name },
+                json,
+            );
+        }
+    };
+
+    let pair_report = match build_status_report(
+        &repository,
+        pair,
+        &current_branch,
+        is_dirty,
+        is_merge_in_progress,
+        is_rebase_in_progress,
+    ) {
+        Ok(pair_report) => pair_report,
+        Err(error) => return finish_handoff_with_error(report, error, json),
+    };
+
+    if let Some(agent) = report.requested_agent.clone() {
+        let conflict = claims
+            .conflict_for_scope(&agent, &pair_report.pair, &pair_report.current)
+            .cloned();
+        report.claim = Some(PreflightClaimReport {
+            requested_agent: agent,
+            claim_allowed: conflict.is_none(),
+            conflict,
+        });
+    }
+
+    report.pair = Some(pair_report);
+    report.ok = true;
+    print_handoff_report(&report, json)
+}
+
+fn finish_handoff_with_error(
+    mut report: HandoffReport,
+    error: AppError,
+    json: bool,
+) -> Result<(), AppError> {
+    report.errors.push(HandoffErrorReport::from_error(&error));
+    print_handoff_report(&report, json)?;
+    Err(error)
 }
 
 fn run_doctor(json: bool) -> Result<(), AppError> {
@@ -1034,6 +1141,83 @@ fn print_claims_report(report: &ClaimsReport) {
     }
 }
 
+fn print_handoff_report(report: &HandoffReport, json: bool) -> Result<(), AppError> {
+    if json {
+        println!("{}", serde_json::to_string_pretty(report)?);
+        return Ok(());
+    }
+
+    println!(
+        "Handoff: {}",
+        if report.ok { "ready" } else { "incomplete" }
+    );
+    println!("Generated at Unix: {}", report.generated_at_unix);
+    println!("Requested pair: {}", report.requested_pair);
+
+    if let Some(agent) = &report.requested_agent {
+        println!("Requested agent: {agent}");
+    }
+    if let Some(repository_root) = &report.repository_root {
+        println!("Repository: {repository_root}");
+    }
+    if let Some(current_branch) = &report.current_branch {
+        println!("Current: {current_branch}");
+    }
+    if let Some(worktree) = report.worktree {
+        println!("Worktree: {worktree}");
+    }
+    if let Some(git_state) = report.git_state {
+        println!("Git state: {git_state}");
+    }
+
+    if let Some(pair) = &report.pair {
+        println!("Pair: {} ({} <-> {})", pair.pair, pair.left, pair.right);
+        if let Some(other) = &pair.other {
+            println!("Other: {other}");
+        } else {
+            println!("Other: unavailable");
+        }
+
+        if pair.switch_allowed {
+            println!("Switch: allowed");
+        } else {
+            let reasons = pair
+                .refusal_reasons
+                .iter()
+                .map(ToString::to_string)
+                .collect::<Vec<_>>()
+                .join("; ");
+            println!("Switch: refused ({reasons})");
+        }
+    }
+
+    if let Some(claim) = &report.claim {
+        if claim.claim_allowed {
+            println!("Claim: allowed for {}", claim.requested_agent);
+        } else if let Some(conflict) = &claim.conflict {
+            println!("Claim: refused (claimed by {})", conflict.agent);
+        }
+    }
+
+    if report.claims.is_empty() {
+        println!("Claims: none");
+    } else {
+        println!("Claims:");
+        for claim in &report.claims {
+            println!(
+                "- {}: {} on {} (created_at_unix: {})",
+                claim.agent, claim.pair, claim.branch, claim.created_at_unix
+            );
+        }
+    }
+
+    for error in &report.errors {
+        println!("Error: {} ({})", error.message, error.kind);
+    }
+
+    Ok(())
+}
+
 fn format_branch_health(left_exists: bool, right_exists: bool, left: &str, right: &str) -> String {
     match (left_exists, right_exists) {
         (true, true) => "ok".to_owned(),
@@ -1154,6 +1338,39 @@ struct ClaimsReport {
     repository_root: String,
     claims_path: String,
     claims: Vec<AgentClaim>,
+}
+
+#[derive(Debug, Serialize)]
+struct HandoffReport {
+    ok: bool,
+    generated_at_unix: u64,
+    requested_pair: String,
+    requested_agent: Option<String>,
+    repository_root: Option<String>,
+    current_branch: Option<String>,
+    worktree: Option<WorktreeStatus>,
+    git_state: Option<GitState>,
+    pair: Option<PairStatusReport>,
+    claims: Vec<AgentClaim>,
+    claim: Option<PreflightClaimReport>,
+    errors: Vec<HandoffErrorReport>,
+}
+
+#[derive(Debug, Serialize)]
+struct HandoffErrorReport {
+    kind: &'static str,
+    message: String,
+    exit_code: u8,
+}
+
+impl HandoffErrorReport {
+    fn from_error(error: &AppError) -> Self {
+        Self {
+            kind: error.kind(),
+            message: error.to_string(),
+            exit_code: error.exit_code(),
+        }
+    }
 }
 
 #[derive(Debug, Serialize)]

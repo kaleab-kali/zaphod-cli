@@ -129,6 +129,21 @@ pub enum CliCommand {
         pair: String,
     },
 
+    /// Show a read-only handoff snapshot for agent continuation.
+    Handoff {
+        /// Emit machine-readable JSON.
+        #[arg(long)]
+        json: bool,
+
+        /// Pair name to include in the handoff snapshot.
+        #[arg(long, default_value = "default")]
+        name: String,
+
+        /// Agent/session name to check for claim conflicts.
+        #[arg(long)]
+        agent: Option<String>,
+    },
+
     /// Remove a branch pair.
     Unpair {
         /// Pair name.
@@ -374,6 +389,22 @@ mod tests {
                 json: false,
                 agent: "codex".to_owned(),
                 pair: "default".to_owned(),
+            }
+        );
+    }
+
+    #[test]
+    fn parses_handoff_command() {
+        let cli = Cli::parse_from([
+            "zaphod", "handoff", "--json", "--name", "api", "--agent", "codex",
+        ]);
+
+        assert_eq!(
+            cli.command,
+            CliCommand::Handoff {
+                json: true,
+                name: "api".to_owned(),
+                agent: Some("codex".to_owned()),
             }
         );
     }

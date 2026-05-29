@@ -14,6 +14,7 @@ fn generates_bash_completions() {
     assert_stdout_contains(&output, "claim");
     assert_stdout_contains(&output, "claims");
     assert_stdout_contains(&output, "completions");
+    assert_stdout_contains(&output, "handoff");
     assert_stdout_contains(&output, "status");
     assert_stdout_contains(&output, "switch");
     assert_stdout_contains(&output, "unclaim");

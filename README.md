@@ -20,6 +20,7 @@ Zaphod is in early development. The current `0.1.x` CLI can:
 - Run preflight checks for humans and coding agents.
 - Assert the expected branch, pair, or pair side before scripted work starts.
 - Claim and release a pair/branch for an agent session.
+- Emit a handoff snapshot for agent-to-agent continuation.
 - Refuse unsafe switches when the worktree is dirty or Git is mid-operation.
 - Emit JSON status for scripts.
 - Diagnose repository, metadata, and branch-pair health in text or JSON.
@@ -60,6 +61,7 @@ Coding agents can use Zaphod as a preflight gate:
 zaphod preflight --agent codex --json
 zaphod claim --agent codex --pair api --json
 zaphod assert --pair api --side left --json
+zaphod handoff --agent codex --json
 zaphod status --json
 zaphod doctor --json
 zaphod switch --dry-run
@@ -94,6 +96,10 @@ zaphod unclaim --agent codex --pair search
 Claims are local metadata only. They do not lock Git, modify branches, or delete
 anything. They make accidental overlap visible so another agent can refuse to
 start on the same pair and branch.
+
+For handoffs between agents or terminals, `zaphod handoff --json` captures the
+current branch, selected pair status, active claims, and claim readiness in one
+read-only report.
 
 ## Safety Model
 
@@ -305,6 +311,22 @@ zaphod unclaim --agent codex --pair api --json
 
 `unclaim` only removes the matching claim metadata. It does not switch
 branches, clean files, or alter Git history.
+
+### `zaphod handoff`
+
+Emit a read-only snapshot for another agent, script, or terminal to continue
+from:
+
+```sh
+zaphod handoff
+zaphod handoff --json
+zaphod handoff --name api --agent codex --json
+```
+
+The handoff report includes repository root, current branch, worktree state,
+Git operation state, selected pair status, active claims, and optional claim
+readiness for the requested agent. It does not create claims, remove claims, or
+switch branches.
 
 ### `zaphod status`
 

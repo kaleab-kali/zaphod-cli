@@ -372,6 +372,39 @@ fn claim_json_records_current_pair_and_branch() {
 }
 
 #[test]
+fn handoff_json_reports_pair_claims_and_agent_readiness() {
+    let dir = TestDir::new("zaphod-cli-metadata");
+    init_repo_with_pair_branches(dir.path());
+    let pair = zaphod(dir.path(), ["pair", "feature/api", "feature/ui"]);
+    assert_success(&pair);
+    let claim = zaphod(dir.path(), ["claim", "--agent", "codex"]);
+    assert_success(&claim);
+
+    let output = zaphod(dir.path(), ["handoff", "--json", "--agent", "other"]);
+
+    assert_success(&output);
+    let report: serde_json::Value = serde_json::from_slice(&output.stdout).expect("handoff json");
+    assert_eq!(report["ok"], true);
+    assert_eq!(report["requested_pair"], "default");
+    assert_eq!(report["requested_agent"], "other");
+    assert_eq!(report["current_branch"], "feature/api");
+    assert_eq!(report["worktree"], "clean");
+    assert_eq!(report["git_state"], "ready");
+    assert_eq!(report["pair"]["pair"], "default");
+    assert_eq!(report["pair"]["current"], "feature/api");
+    assert_eq!(report["pair"]["other"], "feature/ui");
+    assert_eq!(report["pair"]["switch_allowed"], true);
+    assert_eq!(report["claims"][0]["agent"], "codex");
+    assert_eq!(report["claims"][0]["pair"], "default");
+    assert_eq!(report["claim"]["requested_agent"], "other");
+    assert_eq!(report["claim"]["claim_allowed"], false);
+    assert_eq!(report["claim"]["conflict"]["agent"], "codex");
+    assert_eq!(report["errors"], json!([]));
+    assert!(report["generated_at_unix"].as_u64().is_some());
+    assert!(report["repository_root"].as_str().is_some());
+}
+
+#[test]
 fn unclaim_json_releases_current_pair_and_branch() {
     let dir = TestDir::new("zaphod-cli-metadata");
     init_repo_with_pair_branches(dir.path());
