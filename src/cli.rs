@@ -58,6 +58,17 @@ pub enum CliCommand {
         name: String,
     },
 
+    /// Check whether the current repository is ready for paired-branch work.
+    Preflight {
+        /// Emit machine-readable JSON.
+        #[arg(long)]
+        json: bool,
+
+        /// Pair name.
+        #[arg(long, default_value = "default")]
+        name: String,
+    },
+
     /// Remove a branch pair.
     Unpair {
         /// Pair name.
@@ -213,6 +224,19 @@ mod tests {
             CliCommand::Switch {
                 dry_run: true,
                 name: "default".to_owned(),
+            }
+        );
+    }
+
+    #[test]
+    fn parses_preflight_command() {
+        let cli = Cli::parse_from(["zaphod", "preflight", "--json", "--name", "api"]);
+
+        assert_eq!(
+            cli.command,
+            CliCommand::Preflight {
+                json: true,
+                name: "api".to_owned(),
             }
         );
     }

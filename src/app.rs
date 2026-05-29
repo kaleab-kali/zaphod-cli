@@ -25,6 +25,7 @@ pub fn run(cli: Cli) -> Result<(), AppError> {
             }
         }
         CliCommand::Switch { dry_run, name } => switch_branches(&name, dry_run),
+        CliCommand::Preflight { json, name } => run_preflight(&name, json),
         CliCommand::Doctor { json } => run_doctor(json),
         CliCommand::Completions { shell } => generate_completions(shell),
     }
@@ -209,6 +210,36 @@ fn switch_branches(name: &str, dry_run: bool) -> Result<(), AppError> {
     );
 
     Ok(())
+}
+
+fn run_preflight(name: &str, json: bool) -> Result<(), AppError> {
+    match load_status_context(name) {
+        Ok(context) => {
+            let report = PreflightReport::from_status_context(&context);
+            if json {
+                println!("{}", serde_json::to_string_pretty(&report)?);
+            } else {
+                print_preflight_report(&report);
+            }
+
+            if context.status.switch_allowed {
+                Ok(())
+            } else {
+                Err(AppError::PreflightRefused {
+                    reasons: context.status.refusal_reasons,
+                })
+            }
+        }
+        Err(error) => {
+            let report = PreflightReport::from_error(name, &error);
+            if json {
+                println!("{}", serde_json::to_string_pretty(&report)?);
+            } else {
+                print_preflight_report(&report);
+            }
+            Err(error)
+        }
+    }
 }
 
 fn run_doctor(json: bool) -> Result<(), AppError> {
@@ -604,6 +635,46 @@ fn print_status_reports(reports: &[PairStatusReport]) {
     }
 }
 
+fn print_preflight_report(report: &PreflightReport) {
+    println!(
+        "Preflight: {}",
+        if report.ready { "ready" } else { "not ready" }
+    );
+    println!("Pair: {}", report.pair);
+
+    if let Some(repository_root) = &report.repository_root {
+        println!("Repository: {repository_root}");
+    }
+    if let Some(current) = &report.current {
+        println!("Current: {current}");
+    }
+    if let Some(other) = &report.other {
+        println!("Other: {other}");
+    }
+    if let Some(worktree) = report.worktree {
+        println!("Worktree: {worktree}");
+    }
+    if let Some(git_state) = report.git_state {
+        println!("Git state: {git_state}");
+    }
+
+    if report.switch_allowed {
+        println!("Switch: allowed");
+    } else if !report.refusal_reasons.is_empty() {
+        let reasons = report
+            .refusal_reasons
+            .iter()
+            .map(ToString::to_string)
+            .collect::<Vec<_>>()
+            .join("; ");
+        println!("Switch: refused ({reasons})");
+    }
+
+    if let Some(error) = &report.error {
+        println!("Error: {}", error.message);
+    }
+}
+
 fn format_branch_health(left_exists: bool, right_exists: bool, left: &str, right: &str) -> String {
     match (left_exists, right_exists) {
         (true, true) => "ok".to_owned(),
@@ -616,6 +687,63 @@ fn format_branch_health(left_exists: bool, right_exists: bool, left: &str, right
 struct StatusContext {
     repository: GitRepository,
     status: PairStatus,
+}
+
+#[derive(Debug, Serialize)]
+struct PreflightReport {
+    ready: bool,
+    pair: String,
+    repository_root: Option<String>,
+    current: Option<String>,
+    other: Option<String>,
+    worktree: Option<WorktreeStatus>,
+    git_state: Option<GitState>,
+    switch_allowed: bool,
+    refusal_reasons: Vec<RefusalReason>,
+    error: Option<PreflightErrorReport>,
+}
+
+impl PreflightReport {
+    fn from_status_context(context: &StatusContext) -> Self {
+        Self {
+            ready: context.status.switch_allowed,
+            pair: context.status.pair.clone(),
+            repository_root: Some(context.repository.root().display().to_string()),
+            current: Some(context.status.current.clone()),
+            other: Some(context.status.other.clone()),
+            worktree: Some(context.status.worktree),
+            git_state: Some(context.status.git_state),
+            switch_allowed: context.status.switch_allowed,
+            refusal_reasons: context.status.refusal_reasons.clone(),
+            error: None,
+        }
+    }
+
+    fn from_error(pair: &str, error: &AppError) -> Self {
+        Self {
+            ready: false,
+            pair: pair.to_owned(),
+            repository_root: None,
+            current: None,
+            other: None,
+            worktree: None,
+            git_state: None,
+            switch_allowed: false,
+            refusal_reasons: Vec::new(),
+            error: Some(PreflightErrorReport {
+                kind: error.kind(),
+                message: error.to_string(),
+                exit_code: error.exit_code(),
+            }),
+        }
+    }
+}
+
+#[derive(Debug, Serialize)]
+struct PreflightErrorReport {
+    kind: &'static str,
+    message: String,
+    exit_code: u8,
 }
 
 #[derive(Debug, Serialize)]
@@ -760,6 +888,7 @@ pub enum AppError {
     Pair { source: PairError },
     PairAlreadyExists { name: String },
     PairNotFound { name: String },
+    PreflightRefused { reasons: Vec<RefusalReason> },
     Serialize { source: serde_json::Error },
     Status { source: StatusError },
     SwitchRefused { reasons: Vec<RefusalReason> },
@@ -778,6 +907,14 @@ impl Display for AppError {
             Self::Pair { source } => Display::fmt(source, formatter),
             Self::PairAlreadyExists { name } => write!(formatter, "pair '{name}' already exists"),
             Self::PairNotFound { name } => write!(formatter, "pair '{name}' was not found"),
+            Self::PreflightRefused { reasons } => {
+                let reasons = reasons
+                    .iter()
+                    .map(ToString::to_string)
+                    .collect::<Vec<_>>()
+                    .join("; ");
+                write!(formatter, "preflight failed: {reasons}")
+            }
             Self::Serialize { source } => Display::fmt(source, formatter),
             Self::Status { source } => Display::fmt(source, formatter),
             Self::SwitchRefused { reasons } => {
@@ -805,6 +942,7 @@ impl Error for AppError {
             | Self::InvalidBranchName { .. }
             | Self::PairAlreadyExists { .. }
             | Self::PairNotFound { .. }
+            | Self::PreflightRefused { .. }
             | Self::SwitchRefused { .. } => None,
         }
     }
@@ -819,7 +957,7 @@ impl AppError {
             | Self::PairAlreadyExists { .. }
             | Self::PairNotFound { .. }
             | Self::Status { .. } => 2,
-            Self::SwitchRefused { .. } => 3,
+            Self::PreflightRefused { .. } | Self::SwitchRefused { .. } => 3,
             Self::DoctorFailed => 4,
             Self::Git {
                 source: GitError::DetachedHead | GitError::NotRepository,
@@ -838,6 +976,7 @@ impl AppError {
             Self::Pair { .. } => "pair_error",
             Self::PairAlreadyExists { .. } => "pair_already_exists",
             Self::PairNotFound { .. } => "pair_not_found",
+            Self::PreflightRefused { .. } => "preflight_refused",
             Self::Serialize { .. } => "serialize_error",
             Self::Status { .. } => "status_error",
             Self::SwitchRefused { .. } => "switch_refused",

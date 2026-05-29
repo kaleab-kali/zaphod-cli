@@ -7,6 +7,11 @@ and this project intends to follow semantic versioning once releases begin.
 
 ## Unreleased
 
+### Added
+
+- `preflight --json` for read-only agent readiness checks before paired-branch
+  work.
+
 ## 0.1.2 - 2026-05-29
 
 ### Added

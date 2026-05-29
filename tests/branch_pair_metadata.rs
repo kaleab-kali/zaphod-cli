@@ -257,6 +257,30 @@ fn status_all_reports_empty_metadata() {
 }
 
 #[test]
+fn preflight_json_reports_ready_pair() {
+    let dir = TestDir::new("zaphod-cli-metadata");
+    init_repo_with_pair_branches(dir.path());
+    let pair = zaphod(dir.path(), ["pair", "feature/api", "feature/ui"]);
+    assert_success(&pair);
+
+    let preflight = zaphod(dir.path(), ["preflight", "--json"]);
+
+    assert_success(&preflight);
+    let report: serde_json::Value =
+        serde_json::from_slice(&preflight.stdout).expect("preflight json");
+    assert_eq!(report["ready"], true);
+    assert_eq!(report["pair"], "default");
+    assert_eq!(report["current"], "feature/api");
+    assert_eq!(report["other"], "feature/ui");
+    assert_eq!(report["worktree"], "clean");
+    assert_eq!(report["git_state"], "ready");
+    assert_eq!(report["switch_allowed"], true);
+    assert_eq!(report["refusal_reasons"], json!([]));
+    assert!(report["repository_root"].as_str().is_some());
+    assert!(report["error"].is_null());
+}
+
+#[test]
 fn status_reports_dirty_worktree_refusal() {
     let dir = TestDir::new("zaphod-cli-metadata");
     init_repo_with_pair_branches(dir.path());
