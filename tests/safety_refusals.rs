@@ -334,6 +334,21 @@ fn unclaim_reports_missing_claim() {
 }
 
 #[test]
+fn unclaim_rejects_invalid_branch_name() {
+    let dir = TestDir::new("zaphod-cli-safety");
+    init_repo_with_pair_branches(dir.path());
+
+    let output = zaphod(
+        dir.path(),
+        ["unclaim", "--agent", "codex", "--branch", "feature..api"],
+    );
+
+    assert!(!output.status.success());
+    assert_eq!(output.status.code(), Some(2));
+    assert_stderr_contains(&output, "branch name 'feature..api' is invalid");
+}
+
+#[test]
 fn switch_rejects_rebase_in_progress() {
     let dir = TestDir::new("zaphod-cli-safety");
     init_repo_with_pair_branches(dir.path());

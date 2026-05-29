@@ -11,6 +11,8 @@ and this project intends to follow semantic versioning once releases begin.
 
 - `handoff` command for read-only agent continuation snapshots with pair,
   worktree, Git state, and claim details.
+- `unclaim --branch` for releasing stale agent claims without switching
+  branches.
 
 ## 0.1.3 - 2026-05-29
 
