@@ -19,7 +19,7 @@ Zaphod is in early development. The current `0.1.x` CLI can:
 - List, rename, and remove branch pairs.
 - Run preflight checks for humans and coding agents.
 - Assert the expected branch, pair, or pair side before scripted work starts.
-- Claim and release a pair/branch for an agent session.
+- Claim, heartbeat, and release a pair/branch for an agent session.
 - Emit a handoff snapshot for agent-to-agent continuation.
 - Refuse unsafe switches when the worktree is dirty or Git is mid-operation.
 - Emit JSON status for scripts.
@@ -61,6 +61,7 @@ Coding agents can use Zaphod as a preflight gate:
 zaphod preflight --agent codex --json
 zaphod preflight --agent codex --stale-after 2h --json
 zaphod claim --agent codex --pair api --json
+zaphod heartbeat --agent codex --pair api --json
 zaphod assert --pair api --side left --json
 zaphod handoff --agent codex --json
 zaphod status --json
@@ -91,6 +92,7 @@ claims add a lightweight coordination layer:
 ```sh
 zaphod claim --agent codex --pair search --json
 # work on the branch
+zaphod heartbeat --agent codex --pair search --json
 zaphod claims --pair search --stale-after 2h --json
 zaphod prune-claims --pair search --stale-after 2h --json
 zaphod prune-claims --pair search --stale-after 2h --apply
@@ -105,6 +107,10 @@ start on the same pair and branch.
 Stale-claim filters help automation notice abandoned sessions after crashes,
 terminal closes, or interrupted agent runs. They are read-only, so cleanup
 still requires an explicit `unclaim` or `prune-claims --apply`.
+
+Long-running agents can call `heartbeat` while work is in progress. It refreshes
+only an existing claim owned by that agent on the current pair and branch, so
+fresh sessions stay visible without allowing silent takeover of another claim.
 
 For handoffs between agents or terminals, `zaphod handoff --json` captures the
 current branch, selected pair status, active claims, and claim readiness in one
@@ -374,6 +380,24 @@ is dirty, Git is mid-merge or mid-rebase, the current branch is outside the
 pair, or the paired target branch is missing.
 
 Agent names may contain only letters, numbers, `.`, `_`, and `-`.
+
+### `zaphod heartbeat`
+
+Refresh an existing agent session claim for the current pair and branch:
+
+```sh
+zaphod heartbeat --agent codex --pair api
+zaphod heartbeat --agent codex --pair api --json
+```
+
+`heartbeat` updates the claim timestamp in `.git/zaphod/claims.toml` so
+stale-claim checks can distinguish an active long-running session from an
+abandoned one. It requires the claim to already exist, refuses if another agent
+owns the same pair and branch, and does not switch branches, clean files, or
+change Git history.
+
+Unlike `claim`, `heartbeat` can run while the worktree is dirty. This lets an
+agent refresh its own claim while it is actively editing files.
 
 ### `zaphod claims`
 

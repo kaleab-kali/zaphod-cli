@@ -121,6 +121,21 @@ pub enum CliCommand {
         pair: String,
     },
 
+    /// Refresh an existing agent session claim for the current pair and branch.
+    Heartbeat {
+        /// Emit machine-readable JSON.
+        #[arg(long)]
+        json: bool,
+
+        /// Agent/session name that owns the claim.
+        #[arg(long)]
+        agent: String,
+
+        /// Pair name for the claim.
+        #[arg(long, default_value = "default")]
+        pair: String,
+    },
+
     /// List active agent session claims.
     Claims {
         /// Emit machine-readable JSON.
@@ -457,6 +472,28 @@ mod tests {
         assert_eq!(
             cli.command,
             CliCommand::Claim {
+                json: true,
+                agent: "codex".to_owned(),
+                pair: "api".to_owned(),
+            }
+        );
+    }
+
+    #[test]
+    fn parses_heartbeat_command() {
+        let cli = Cli::parse_from([
+            "zaphod",
+            "heartbeat",
+            "--json",
+            "--agent",
+            "codex",
+            "--pair",
+            "api",
+        ]);
+
+        assert_eq!(
+            cli.command,
+            CliCommand::Heartbeat {
                 json: true,
                 agent: "codex".to_owned(),
                 pair: "api".to_owned(),
