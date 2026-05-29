@@ -127,6 +127,10 @@ pub enum CliCommand {
         /// Pair name for the claim.
         #[arg(long, default_value = "default")]
         pair: String,
+
+        /// Branch name for the claim. Defaults to the current branch.
+        #[arg(long)]
+        branch: Option<String>,
     },
 
     /// Show a read-only handoff snapshot for agent continuation.
@@ -381,7 +385,14 @@ mod tests {
 
     #[test]
     fn parses_unclaim_command() {
-        let cli = Cli::parse_from(["zaphod", "unclaim", "--agent", "codex"]);
+        let cli = Cli::parse_from([
+            "zaphod",
+            "unclaim",
+            "--agent",
+            "codex",
+            "--branch",
+            "feature/api",
+        ]);
 
         assert_eq!(
             cli.command,
@@ -389,6 +400,7 @@ mod tests {
                 json: false,
                 agent: "codex".to_owned(),
                 pair: "default".to_owned(),
+                branch: Some("feature/api".to_owned()),
             }
         );
     }

@@ -36,7 +36,12 @@ pub fn run(cli: Cli) -> Result<(), AppError> {
         } => assert_repository_state(json, pair, branch, side),
         CliCommand::Claim { json, agent, pair } => claim_current_scope(json, agent, pair),
         CliCommand::Claims { json } => list_claims(json),
-        CliCommand::Unclaim { json, agent, pair } => unclaim_current_scope(json, agent, pair),
+        CliCommand::Unclaim {
+            json,
+            agent,
+            pair,
+            branch,
+        } => unclaim_current_scope(json, agent, pair, branch),
         CliCommand::Handoff { json, name, agent } => show_handoff(json, name, agent),
         CliCommand::Doctor { json } => run_doctor(json),
         CliCommand::Completions { shell } => generate_completions(shell),
@@ -483,20 +488,32 @@ fn list_claims(json: bool) -> Result<(), AppError> {
     Ok(())
 }
 
-fn unclaim_current_scope(json: bool, agent: String, pair_name: String) -> Result<(), AppError> {
+fn unclaim_current_scope(
+    json: bool,
+    agent: String,
+    pair_name: String,
+    branch: Option<String>,
+) -> Result<(), AppError> {
     validate_agent_name(&agent)?;
     let repository = GitRepository::discover(".")?;
-    let current_branch = repository.current_branch()?;
+    let branch = match branch {
+        Some(branch) => {
+            ensure_branch_name_is_valid(&repository, &branch)?;
+            branch
+        }
+        None => repository.current_branch()?,
+    };
     let store = ClaimStore::for_repository(&repository);
     let mut claims = store.load()?;
 
-    let removed = claims
-        .remove(&agent, &pair_name, &current_branch)
-        .ok_or_else(|| AppError::ClaimNotFound {
-            agent: agent.clone(),
-            pair: pair_name.clone(),
-            branch: current_branch.clone(),
-        })?;
+    let removed =
+        claims
+            .remove(&agent, &pair_name, &branch)
+            .ok_or_else(|| AppError::ClaimNotFound {
+                agent: agent.clone(),
+                pair: pair_name.clone(),
+                branch: branch.clone(),
+            })?;
     store.save(&claims)?;
 
     let report = ClaimOperationReport {
@@ -506,7 +523,7 @@ fn unclaim_current_scope(json: bool, agent: String, pair_name: String) -> Result
         claims_path: store.path().display().to_string(),
         agent,
         pair: pair_name,
-        branch: current_branch,
+        branch,
         claim: Some(removed),
         conflict: None,
         refusal_reasons: Vec::new(),

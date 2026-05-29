@@ -91,6 +91,7 @@ claims add a lightweight coordination layer:
 zaphod claim --agent codex --pair search --json
 # work on the branch
 zaphod unclaim --agent codex --pair search
+zaphod unclaim --agent codex --pair search --branch feature/api
 ```
 
 Claims are local metadata only. They do not lock Git, modify branches, or delete
@@ -355,10 +356,15 @@ Release an agent session claim for the current pair and branch:
 ```sh
 zaphod unclaim --agent codex --pair api
 zaphod unclaim --agent codex --pair api --json
+zaphod unclaim --agent codex --pair api --branch feature/api
 ```
 
-`unclaim` only removes the matching claim metadata. It does not switch
-branches, clean files, or alter Git history.
+By default, `unclaim` releases the matching claim for the current branch. Use
+`--branch` to release a claim for another branch without switching to it. This
+is useful when an agent stopped early and left stale claim metadata behind.
+
+`unclaim` only removes the matching claim metadata. It does not switch branches,
+clean files, or alter Git history.
 
 ### `zaphod handoff`
 

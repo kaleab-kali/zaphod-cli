@@ -3,7 +3,7 @@ mod support;
 use serde_json::json;
 use std::fs;
 use support::{
-    TestDir, assert_stderr_contains, assert_stdout_contains, assert_success, current_branch,
+    TestDir, assert_stderr_contains, assert_stdout_contains, assert_success, current_branch, git,
     init_repo_with_pair_branches, zaphod,
 };
 
@@ -423,6 +423,44 @@ fn unclaim_json_releases_current_pair_and_branch() {
     assert_eq!(report["pair"], "default");
     assert_eq!(report["branch"], "feature/api");
     assert_eq!(report["claim"]["agent"], "codex");
+
+    let claims = zaphod(dir.path(), ["claims", "--json"]);
+    assert_success(&claims);
+    let report: serde_json::Value = serde_json::from_slice(&claims.stdout).expect("claims json");
+    assert_eq!(report["claims"], json!([]));
+}
+
+#[test]
+fn unclaim_json_can_release_a_claim_from_another_branch() {
+    let dir = TestDir::new("zaphod-cli-metadata");
+    init_repo_with_pair_branches(dir.path());
+    let pair = zaphod(dir.path(), ["pair", "feature/api", "feature/ui"]);
+    assert_success(&pair);
+    let claim = zaphod(dir.path(), ["claim", "--agent", "codex"]);
+    assert_success(&claim);
+    git(dir.path(), ["switch", "feature/ui"]);
+
+    let output = zaphod(
+        dir.path(),
+        [
+            "unclaim",
+            "--json",
+            "--agent",
+            "codex",
+            "--branch",
+            "feature/api",
+        ],
+    );
+
+    assert_success(&output);
+    let report: serde_json::Value = serde_json::from_slice(&output.stdout).expect("unclaim json");
+    assert_eq!(report["ok"], true);
+    assert_eq!(report["status"], "released");
+    assert_eq!(report["agent"], "codex");
+    assert_eq!(report["pair"], "default");
+    assert_eq!(report["branch"], "feature/api");
+    assert_eq!(report["claim"]["branch"], "feature/api");
+    assert_eq!(current_branch(dir.path()), "feature/ui");
 
     let claims = zaphod(dir.path(), ["claims", "--json"]);
     assert_success(&claims);
