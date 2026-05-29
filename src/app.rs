@@ -16,6 +16,7 @@ use std::time::{SystemTime, SystemTimeError, UNIX_EPOCH};
 pub fn run(cli: Cli) -> Result<(), AppError> {
     match cli.command {
         CliCommand::Pair { left, right, name } => pair_branches(name, left, right),
+        CliCommand::Init { other, name } => init_pair(name, other),
         CliCommand::List { json } => list_pairs(json),
         CliCommand::Unpair { name } => unpair_branches(&name),
         CliCommand::Rename { old, new } => rename_pair(&old, &new),
@@ -84,10 +85,7 @@ fn pair_branches(name: String, left: String, right: String) -> Result<(), AppErr
     ensure_branch_exists(&repository, &right)?;
 
     let pair = BranchPair::new(name, left, right)?;
-    let store = MetadataStore::for_repository(&repository);
-    let mut pairs = store.load()?;
-    let replaced = pairs.upsert(pair.clone()).is_some();
-    store.save(&pairs)?;
+    let replaced = save_pair(&repository, pair.clone())?;
 
     if replaced {
         println!(
@@ -99,6 +97,40 @@ fn pair_branches(name: String, left: String, right: String) -> Result<(), AppErr
     }
 
     Ok(())
+}
+
+fn init_pair(name: String, other: String) -> Result<(), AppError> {
+    let repository = GitRepository::discover(".")?;
+    let current = repository.current_branch()?;
+    ensure_branch_name_is_valid(&repository, &other)?;
+    ensure_branch_exists(&repository, &current)?;
+    ensure_branch_exists(&repository, &other)?;
+
+    let pair = BranchPair::new(name, current, other)?;
+    let replaced = save_pair(&repository, pair.clone())?;
+
+    if replaced {
+        println!(
+            "Updated pair '{}': {} <-> {}",
+            pair.name, pair.left, pair.right
+        );
+    } else {
+        println!(
+            "Initialized pair '{}': {} <-> {}",
+            pair.name, pair.left, pair.right
+        );
+    }
+
+    Ok(())
+}
+
+fn save_pair(repository: &GitRepository, pair: BranchPair) -> Result<bool, AppError> {
+    let store = MetadataStore::for_repository(repository);
+    let mut pairs = store.load()?;
+    let replaced = pairs.upsert(pair).is_some();
+    store.save(&pairs)?;
+
+    Ok(replaced)
 }
 
 fn list_pairs(json: bool) -> Result<(), AppError> {
