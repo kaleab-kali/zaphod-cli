@@ -7,6 +7,8 @@ and this project intends to follow semantic versioning once releases begin.
 
 ## Unreleased
 
+## 0.1.7 - 2026-05-30
+
 ### Added
 
 - `heartbeat` command for refreshing an existing agent claim during long-running
