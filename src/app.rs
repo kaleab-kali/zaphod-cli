@@ -40,7 +40,8 @@ pub fn run(cli: Cli) -> Result<(), AppError> {
             agent,
             pair,
             branch,
-        } => list_claims(json, agent, pair, branch),
+            stale_after,
+        } => list_claims(json, agent, pair, branch, stale_after),
         CliCommand::Unclaim {
             json,
             agent,
@@ -479,6 +480,7 @@ fn list_claims(
     agent: Option<String>,
     pair: Option<String>,
     branch: Option<String>,
+    stale_after: Option<String>,
 ) -> Result<(), AppError> {
     if let Some(agent) = &agent {
         validate_agent_name(agent)?;
@@ -486,6 +488,15 @@ fn list_claims(
     if let Some(pair) = &pair {
         validate_pair_name(pair)?;
     }
+    let stale_after_seconds = stale_after
+        .as_deref()
+        .map(parse_duration_seconds)
+        .transpose()?;
+    let now_unix = if stale_after_seconds.is_some() {
+        Some(current_unix_timestamp()?)
+    } else {
+        None
+    };
 
     let repository = GitRepository::discover(".")?;
     if let Some(branch) = &branch {
@@ -501,6 +512,13 @@ fn list_claims(
             agent.as_ref().is_none_or(|agent| claim.agent == *agent)
                 && pair.as_ref().is_none_or(|pair| claim.pair == *pair)
                 && branch.as_ref().is_none_or(|branch| claim.branch == *branch)
+                && stale_after_seconds.is_none_or(|stale_after_seconds| {
+                    claim_is_stale(
+                        claim,
+                        now_unix.expect("stale claim filtering has a timestamp"),
+                        stale_after_seconds,
+                    )
+                })
         })
         .cloned()
         .collect();
@@ -511,6 +529,7 @@ fn list_claims(
             agent,
             pair,
             branch,
+            stale_after_seconds,
         },
         claims: filtered_claims,
     };
@@ -1183,12 +1202,18 @@ fn print_claims_report(report: &ClaimsReport) {
     if report.filters.agent.is_some()
         || report.filters.pair.is_some()
         || report.filters.branch.is_some()
+        || report.filters.stale_after_seconds.is_some()
     {
         println!(
-            "Filters: agent={}, pair={}, branch={}",
+            "Filters: agent={}, pair={}, branch={}, stale_after={}",
             report.filters.agent.as_deref().unwrap_or("*"),
             report.filters.pair.as_deref().unwrap_or("*"),
-            report.filters.branch.as_deref().unwrap_or("*")
+            report.filters.branch.as_deref().unwrap_or("*"),
+            report
+                .filters
+                .stale_after_seconds
+                .map(|seconds| format!("{seconds}s"))
+                .unwrap_or_else(|| "*".to_owned())
         );
     }
 
@@ -1411,6 +1436,7 @@ struct ClaimsFilterReport {
     agent: Option<String>,
     pair: Option<String>,
     branch: Option<String>,
+    stale_after_seconds: Option<u64>,
 }
 
 #[derive(Debug, Serialize)]
@@ -1579,6 +1605,53 @@ fn current_unix_timestamp() -> Result<u64, AppError> {
     Ok(SystemTime::now().duration_since(UNIX_EPOCH)?.as_secs())
 }
 
+fn claim_is_stale(claim: &AgentClaim, now_unix: u64, stale_after_seconds: u64) -> bool {
+    now_unix.saturating_sub(claim.created_at_unix) >= stale_after_seconds
+}
+
+fn parse_duration_seconds(value: &str) -> Result<u64, AppError> {
+    let digits_end = value
+        .char_indices()
+        .find_map(|(index, character)| (!character.is_ascii_digit()).then_some(index))
+        .unwrap_or(value.len());
+    let (amount, unit) = value.split_at(digits_end);
+
+    if amount.is_empty() {
+        return Err(AppError::InvalidDuration {
+            value: value.to_owned(),
+        });
+    }
+
+    let amount = amount
+        .parse::<u64>()
+        .map_err(|_| AppError::InvalidDuration {
+            value: value.to_owned(),
+        })?;
+    if amount == 0 {
+        return Err(AppError::InvalidDuration {
+            value: value.to_owned(),
+        });
+    }
+
+    let multiplier = match unit {
+        "" | "s" => 1,
+        "m" => 60,
+        "h" => 60 * 60,
+        "d" => 24 * 60 * 60,
+        _ => {
+            return Err(AppError::InvalidDuration {
+                value: value.to_owned(),
+            });
+        }
+    };
+
+    amount
+        .checked_mul(multiplier)
+        .ok_or_else(|| AppError::InvalidDuration {
+            value: value.to_owned(),
+        })
+}
+
 fn ensure_branch_exists(repository: &GitRepository, branch: &str) -> Result<(), AppError> {
     if repository.branch_exists(branch)? {
         return Ok(());
@@ -1629,6 +1702,9 @@ pub enum AppError {
     },
     InvalidBranchName {
         branch: String,
+    },
+    InvalidDuration {
+        value: String,
     },
     Metadata {
         source: MetadataError,
@@ -1686,6 +1762,10 @@ impl Display for AppError {
             Self::InvalidBranchName { branch } => {
                 write!(formatter, "branch name '{branch}' is invalid")
             }
+            Self::InvalidDuration { value } => write!(
+                formatter,
+                "duration '{value}' is invalid; use a positive number followed by s, m, h, or d"
+            ),
             Self::Metadata { source } => Display::fmt(source, formatter),
             Self::Pair { source } => Display::fmt(source, formatter),
             Self::PairAlreadyExists { name } => write!(formatter, "pair '{name}' already exists"),
@@ -1728,6 +1808,7 @@ impl Error for AppError {
             | Self::ClaimNotFound { .. }
             | Self::DoctorFailed
             | Self::InvalidBranchName { .. }
+            | Self::InvalidDuration { .. }
             | Self::PairAlreadyExists { .. }
             | Self::PairNotFound { .. }
             | Self::PreflightRefused { .. }
@@ -1744,6 +1825,7 @@ impl AppError {
             | Self::Claim { .. }
             | Self::ClaimNotFound { .. }
             | Self::InvalidBranchName { .. }
+            | Self::InvalidDuration { .. }
             | Self::Pair { .. }
             | Self::PairAlreadyExists { .. }
             | Self::PairNotFound { .. }
@@ -1773,6 +1855,7 @@ impl AppError {
             Self::DoctorFailed => "doctor_failed",
             Self::Git { source } => source.kind(),
             Self::InvalidBranchName { .. } => "invalid_branch_name",
+            Self::InvalidDuration { .. } => "invalid_duration",
             Self::Metadata { .. } => "metadata_error",
             Self::Pair { .. } => "pair_error",
             Self::PairAlreadyExists { .. } => "pair_already_exists",

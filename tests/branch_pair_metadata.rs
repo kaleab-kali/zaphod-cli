@@ -410,6 +410,38 @@ fn claims_json_filters_by_agent_pair_and_branch() {
 }
 
 #[test]
+fn claims_json_filters_stale_claims() {
+    let dir = TestDir::new("zaphod-cli-metadata");
+    init_repo_with_pair_branches(dir.path());
+    let metadata_dir = dir.git_dir().join("zaphod");
+    fs::create_dir_all(&metadata_dir).expect("create zaphod metadata directory");
+    fs::write(
+        metadata_dir.join("claims.toml"),
+        r#"[[claims]]
+agent = "old-agent"
+pair = "default"
+branch = "feature/api"
+created_at_unix = 1
+
+[[claims]]
+agent = "fresh-agent"
+pair = "default"
+branch = "feature/api"
+created_at_unix = 4102444800
+"#,
+    )
+    .expect("write claims metadata");
+
+    let claims = zaphod(dir.path(), ["claims", "--json", "--stale-after", "1d"]);
+
+    assert_success(&claims);
+    let report: serde_json::Value = serde_json::from_slice(&claims.stdout).expect("claims json");
+    assert_eq!(report["filters"]["stale_after_seconds"], 86_400);
+    assert_eq!(report["claims"].as_array().expect("claims").len(), 1);
+    assert_eq!(report["claims"][0]["agent"], "old-agent");
+}
+
+#[test]
 fn handoff_json_reports_pair_claims_and_agent_readiness() {
     let dir = TestDir::new("zaphod-cli-metadata");
     init_repo_with_pair_branches(dir.path());

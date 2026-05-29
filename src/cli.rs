@@ -124,6 +124,10 @@ pub enum CliCommand {
         /// Filter claims by branch name.
         #[arg(long)]
         branch: Option<String>,
+
+        /// Filter claims older than this duration, for example 30m, 2h, or 1d.
+        #[arg(long)]
+        stale_after: Option<String>,
     },
 
     /// Release an agent session claim for the current pair and branch.
@@ -400,6 +404,8 @@ mod tests {
             "api",
             "--branch",
             "feature/api",
+            "--stale-after",
+            "2h",
         ]);
 
         assert_eq!(
@@ -409,6 +415,7 @@ mod tests {
                 agent: Some("codex".to_owned()),
                 pair: Some("api".to_owned()),
                 branch: Some("feature/api".to_owned()),
+                stale_after: Some("2h".to_owned()),
             }
         );
     }
