@@ -27,7 +27,7 @@ pub fn run(cli: Cli) -> Result<(), AppError> {
             }
         }
         CliCommand::Switch { dry_run, name } => switch_branches(&name, dry_run),
-        CliCommand::Preflight { json, name } => run_preflight(&name, json),
+        CliCommand::Preflight { json, name, agent } => run_preflight(&name, json, agent),
         CliCommand::Assert {
             json,
             pair,
@@ -223,17 +223,37 @@ fn switch_branches(name: &str, dry_run: bool) -> Result<(), AppError> {
     Ok(())
 }
 
-fn run_preflight(name: &str, json: bool) -> Result<(), AppError> {
+fn run_preflight(name: &str, json: bool, agent: Option<String>) -> Result<(), AppError> {
+    if let Some(agent) = &agent {
+        validate_agent_name(agent)?;
+    }
+
     match load_status_context(name) {
         Ok(context) => {
-            let report = PreflightReport::from_status_context(&context);
+            let mut report = PreflightReport::from_status_context(&context);
+            let claim_conflict = if let Some(agent) = agent {
+                let claim_report = build_preflight_claim_report(&context, agent)?;
+                let conflict = claim_report.conflict.clone();
+                report.ready = report.ready && claim_report.claim_allowed;
+                report.claim = Some(claim_report);
+                conflict
+            } else {
+                None
+            };
+
             if json {
                 println!("{}", serde_json::to_string_pretty(&report)?);
             } else {
                 print_preflight_report(&report);
             }
 
-            if context.status.switch_allowed {
+            if let Some(conflict) = claim_conflict {
+                Err(AppError::ClaimConflict {
+                    agent: conflict.agent,
+                    pair: conflict.pair,
+                    branch: conflict.branch,
+                })
+            } else if context.status.switch_allowed {
                 Ok(())
             } else {
                 Err(AppError::PreflightRefused {
@@ -251,6 +271,23 @@ fn run_preflight(name: &str, json: bool) -> Result<(), AppError> {
             Err(error)
         }
     }
+}
+
+fn build_preflight_claim_report(
+    context: &StatusContext,
+    agent: String,
+) -> Result<PreflightClaimReport, AppError> {
+    let store = ClaimStore::for_repository(&context.repository);
+    let claims = store.load()?;
+    let conflict = claims
+        .conflict_for_scope(&agent, &context.status.pair, &context.status.current)
+        .cloned();
+
+    Ok(PreflightClaimReport {
+        requested_agent: agent,
+        claim_allowed: conflict.is_none(),
+        conflict,
+    })
 }
 
 fn assert_repository_state(
@@ -906,6 +943,14 @@ fn print_preflight_report(report: &PreflightReport) {
         println!("Switch: refused ({reasons})");
     }
 
+    if let Some(claim) = &report.claim {
+        if claim.claim_allowed {
+            println!("Claim: allowed for {}", claim.requested_agent);
+        } else if let Some(conflict) = &claim.conflict {
+            println!("Claim: refused (claimed by {})", conflict.agent);
+        }
+    }
+
     if let Some(error) = &report.error {
         println!("Error: {}", error.message);
     }
@@ -1014,6 +1059,7 @@ struct PreflightReport {
     git_state: Option<GitState>,
     switch_allowed: bool,
     refusal_reasons: Vec<RefusalReason>,
+    claim: Option<PreflightClaimReport>,
     error: Option<PreflightErrorReport>,
 }
 
@@ -1029,6 +1075,7 @@ impl PreflightReport {
             git_state: Some(context.status.git_state),
             switch_allowed: context.status.switch_allowed,
             refusal_reasons: context.status.refusal_reasons.clone(),
+            claim: None,
             error: None,
         }
     }
@@ -1044,6 +1091,7 @@ impl PreflightReport {
             git_state: None,
             switch_allowed: false,
             refusal_reasons: Vec::new(),
+            claim: None,
             error: Some(PreflightErrorReport {
                 kind: error.kind(),
                 message: error.to_string(),
@@ -1058,6 +1106,13 @@ struct PreflightErrorReport {
     kind: &'static str,
     message: String,
     exit_code: u8,
+}
+
+#[derive(Debug, Serialize)]
+struct PreflightClaimReport {
+    requested_agent: String,
+    claim_allowed: bool,
+    conflict: Option<AgentClaim>,
 }
 
 #[derive(Debug, Serialize)]

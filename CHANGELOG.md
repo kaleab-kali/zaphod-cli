@@ -15,6 +15,8 @@ and this project intends to follow semantic versioning once releases begin.
   between agent sessions working on the same pair and branch.
 - `preflight --json` for read-only agent readiness checks before paired-branch
   work.
+- `preflight --agent` for read-only claim conflict checks before an agent
+  starts work.
 
 ## 0.1.2 - 2026-05-29
 

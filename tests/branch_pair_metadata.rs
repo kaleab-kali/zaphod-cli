@@ -281,6 +281,24 @@ fn preflight_json_reports_ready_pair() {
 }
 
 #[test]
+fn preflight_json_reports_claim_readiness_for_agent() {
+    let dir = TestDir::new("zaphod-cli-metadata");
+    init_repo_with_pair_branches(dir.path());
+    let pair = zaphod(dir.path(), ["pair", "feature/api", "feature/ui"]);
+    assert_success(&pair);
+
+    let preflight = zaphod(dir.path(), ["preflight", "--json", "--agent", "codex"]);
+
+    assert_success(&preflight);
+    let report: serde_json::Value =
+        serde_json::from_slice(&preflight.stdout).expect("preflight json");
+    assert_eq!(report["ready"], true);
+    assert_eq!(report["claim"]["requested_agent"], "codex");
+    assert_eq!(report["claim"]["claim_allowed"], true);
+    assert!(report["claim"]["conflict"].is_null());
+}
+
+#[test]
 fn assert_json_passes_for_expected_pair_branch_and_side() {
     let dir = TestDir::new("zaphod-cli-metadata");
     init_repo_with_pair_branches(dir.path());

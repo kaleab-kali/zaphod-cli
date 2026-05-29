@@ -57,7 +57,7 @@ repository state.
 Coding agents can use Zaphod as a preflight gate:
 
 ```sh
-zaphod preflight --json
+zaphod preflight --agent codex --json
 zaphod claim --agent codex --pair api --json
 zaphod assert --pair api --side left --json
 zaphod status --json
@@ -238,12 +238,17 @@ Check whether the current repository is ready for paired-branch work:
 
 ```sh
 zaphod preflight --json
+zaphod preflight --agent codex --json
 ```
 
 Preflight is read-only. It reports the requested pair, current branch, paired
 target branch, worktree state, Git operation state, switch readiness, and any
 refusal reasons. It exits successfully when the pair is ready and exits with an
 error when the repository is not ready.
+
+Use `--agent` to check whether another agent has already claimed the current
+pair and branch. This does not create or remove a claim; it only reports whether
+claiming would be allowed.
 
 ### `zaphod assert`
 

@@ -158,6 +158,33 @@ fn preflight_json_reports_missing_pair() {
 }
 
 #[test]
+fn preflight_json_reports_claim_conflict() {
+    let dir = TestDir::new("zaphod-cli-safety");
+    init_repo_with_pair_branches(dir.path());
+    let pair = zaphod(dir.path(), ["pair", "feature/api", "feature/ui"]);
+    assert_success(&pair);
+    let claim = zaphod(dir.path(), ["claim", "--agent", "codex"]);
+    assert_success(&claim);
+
+    let output = zaphod(dir.path(), ["preflight", "--json", "--agent", "other"]);
+
+    assert!(!output.status.success());
+    assert_eq!(output.status.code(), Some(3));
+    let report: serde_json::Value = serde_json::from_slice(&output.stdout).expect("preflight json");
+    assert_eq!(report["ready"], false);
+    assert_eq!(report["switch_allowed"], true);
+    assert_eq!(report["claim"]["requested_agent"], "other");
+    assert_eq!(report["claim"]["claim_allowed"], false);
+    assert_eq!(report["claim"]["conflict"]["agent"], "codex");
+    assert_eq!(report["claim"]["conflict"]["pair"], "default");
+    assert_eq!(report["claim"]["conflict"]["branch"], "feature/api");
+    assert_stderr_contains(
+        &output,
+        "pair 'default' on branch 'feature/api' is already claimed by agent 'codex'",
+    );
+}
+
+#[test]
 fn assert_json_reports_wrong_side() {
     let dir = TestDir::new("zaphod-cli-safety");
     init_repo_with_pair_branches(dir.path());
