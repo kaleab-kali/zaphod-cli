@@ -90,6 +90,7 @@ claims add a lightweight coordination layer:
 ```sh
 zaphod claim --agent codex --pair search --json
 # work on the branch
+zaphod claims --pair search --stale-after 2h --json
 zaphod unclaim --agent codex --pair search
 zaphod unclaim --agent codex --pair search --branch feature/api
 ```
@@ -97,6 +98,10 @@ zaphod unclaim --agent codex --pair search --branch feature/api
 Claims are local metadata only. They do not lock Git, modify branches, or delete
 anything. They make accidental overlap visible so another agent can refuse to
 start on the same pair and branch.
+
+Stale-claim filters help automation notice abandoned sessions after crashes,
+terminal closes, or interrupted agent runs. They are read-only, so cleanup
+still requires an explicit `unclaim`.
 
 For handoffs between agents or terminals, `zaphod handoff --json` captures the
 current branch, selected pair status, active claims, and claim readiness in one
@@ -348,10 +353,12 @@ List active agent session claims:
 zaphod claims
 zaphod claims --json
 zaphod claims --agent codex --pair api --branch feature/api --json
+zaphod claims --pair api --stale-after 2h --json
 ```
 
-Use filters when a script needs to check a specific agent, pair, or branch
-without parsing unrelated claim entries.
+Use filters when a script needs to check a specific agent, pair, branch, or
+stale-claim window without parsing unrelated claim entries. Durations use a
+positive number followed by `s`, `m`, `h`, or `d`.
 
 ### `zaphod unclaim`
 

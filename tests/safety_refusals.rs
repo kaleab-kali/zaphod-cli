@@ -346,6 +346,15 @@ fn claims_rejects_invalid_filter_values() {
     assert!(!output.status.success());
     assert_eq!(output.status.code(), Some(2));
     assert_stderr_contains(&output, "branch name 'feature..api' is invalid");
+
+    let output = zaphod(dir.path(), ["claims", "--stale-after", "soon"]);
+
+    assert!(!output.status.success());
+    assert_eq!(output.status.code(), Some(2));
+    assert_stderr_contains(
+        &output,
+        "duration 'soon' is invalid; use a positive number followed by s, m, h, or d",
+    );
 }
 
 #[test]
