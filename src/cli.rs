@@ -67,6 +67,10 @@ pub enum CliCommand {
         /// Pair name.
         #[arg(long, default_value = "default")]
         name: String,
+
+        /// Agent/session name to check for claim conflicts.
+        #[arg(long)]
+        agent: Option<String>,
     },
 
     /// Assert that the current branch matches expected repository state.
@@ -292,13 +296,22 @@ mod tests {
 
     #[test]
     fn parses_preflight_command() {
-        let cli = Cli::parse_from(["zaphod", "preflight", "--json", "--name", "api"]);
+        let cli = Cli::parse_from([
+            "zaphod",
+            "preflight",
+            "--json",
+            "--name",
+            "api",
+            "--agent",
+            "codex",
+        ]);
 
         assert_eq!(
             cli.command,
             CliCommand::Preflight {
                 json: true,
                 name: "api".to_owned(),
+                agent: Some("codex".to_owned()),
             }
         );
     }
