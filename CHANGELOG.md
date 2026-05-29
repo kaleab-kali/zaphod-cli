@@ -7,6 +7,8 @@ and this project intends to follow semantic versioning once releases begin.
 
 ## Unreleased
 
+## 0.1.5 - 2026-05-30
+
 ### Added
 
 - `prune-claims` command for dry-run-by-default cleanup of stale agent claims,
