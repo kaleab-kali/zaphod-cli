@@ -7,6 +7,8 @@ and this project intends to follow semantic versioning once releases begin.
 
 ## Unreleased
 
+## 0.1.4 - 2026-05-29
+
 ### Added
 
 - `claims --agent`, `claims --pair`, and `claims --branch` filters for
