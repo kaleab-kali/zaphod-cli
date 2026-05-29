@@ -11,6 +11,8 @@ and this project intends to follow semantic versioning once releases begin.
 
 - `assert` command for read-only branch, pair, and pair-side checks before
   scripted or agentic work starts.
+- `claim`, `claims`, and `unclaim` commands for lightweight local coordination
+  between agent sessions working on the same pair and branch.
 - `preflight --json` for read-only agent readiness checks before paired-branch
   work.
 

@@ -1,3 +1,3 @@
 mod store;
 
-pub use store::{MetadataError, MetadataStore};
+pub use store::{ClaimStore, MetadataError, MetadataStore};

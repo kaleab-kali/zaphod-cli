@@ -1,15 +1,17 @@
 use crate::cli::{Cli, CliCommand, PairSide};
 use crate::core::{
-    BranchPair, GitState, PairError, PairStatus, RefusalReason, StatusError, WorktreeStatus,
+    AgentClaim, BranchPair, ClaimError, GitState, PairError, PairStatus, RefusalReason,
+    StatusError, WorktreeStatus, validate_agent_name,
 };
 use crate::git::{GitError, GitRepository};
-use crate::metadata::{MetadataError, MetadataStore};
+use crate::metadata::{ClaimStore, MetadataError, MetadataStore};
 use clap::CommandFactory;
 use clap_complete::Shell;
 use serde::Serialize;
 use std::error::Error;
 use std::fmt::{self, Display, Formatter};
 use std::io;
+use std::time::{SystemTime, SystemTimeError, UNIX_EPOCH};
 
 pub fn run(cli: Cli) -> Result<(), AppError> {
     match cli.command {
@@ -32,6 +34,9 @@ pub fn run(cli: Cli) -> Result<(), AppError> {
             branch,
             side,
         } => assert_repository_state(json, pair, branch, side),
+        CliCommand::Claim { json, agent, pair } => claim_current_scope(json, agent, pair),
+        CliCommand::Claims { json } => list_claims(json),
+        CliCommand::Unclaim { json, agent, pair } => unclaim_current_scope(json, agent, pair),
         CliCommand::Doctor { json } => run_doctor(json),
         CliCommand::Completions { shell } => generate_completions(shell),
     }
@@ -344,6 +349,133 @@ fn assert_repository_state(
             failures: report.failures,
         })
     }
+}
+
+fn claim_current_scope(json: bool, agent: String, pair_name: String) -> Result<(), AppError> {
+    validate_agent_name(&agent)?;
+    let context = load_status_context(&pair_name)?;
+    let store = ClaimStore::for_repository(&context.repository);
+
+    if !context.status.switch_allowed {
+        let report = ClaimOperationReport {
+            ok: false,
+            status: "refused",
+            repository_root: context.repository.root().display().to_string(),
+            claims_path: store.path().display().to_string(),
+            agent,
+            pair: pair_name,
+            branch: context.status.current,
+            claim: None,
+            conflict: None,
+            refusal_reasons: context.status.refusal_reasons.clone(),
+        };
+        print_claim_operation_report(&report, json)?;
+        return Err(AppError::PreflightRefused {
+            reasons: context.status.refusal_reasons,
+        });
+    }
+
+    let mut claims = store.load()?;
+    if let Some(conflict) =
+        claims.conflict_for_scope(&agent, &context.status.pair, &context.status.current)
+    {
+        let conflict_agent = conflict.agent.clone();
+        let report = ClaimOperationReport {
+            ok: false,
+            status: "conflict",
+            repository_root: context.repository.root().display().to_string(),
+            claims_path: store.path().display().to_string(),
+            agent,
+            pair: context.status.pair,
+            branch: context.status.current,
+            claim: None,
+            conflict: Some(conflict.clone()),
+            refusal_reasons: Vec::new(),
+        };
+        print_claim_operation_report(&report, json)?;
+        return Err(AppError::ClaimConflict {
+            agent: conflict_agent,
+            pair: report.pair,
+            branch: report.branch,
+        });
+    }
+
+    let claim = AgentClaim::new(
+        agent,
+        context.status.pair,
+        context.status.current,
+        current_unix_timestamp()?,
+    )?;
+    claims.upsert(claim.clone());
+    store.save(&claims)?;
+
+    let report = ClaimOperationReport {
+        ok: true,
+        status: "claimed",
+        repository_root: context.repository.root().display().to_string(),
+        claims_path: store.path().display().to_string(),
+        agent: claim.agent.clone(),
+        pair: claim.pair.clone(),
+        branch: claim.branch.clone(),
+        claim: Some(claim),
+        conflict: None,
+        refusal_reasons: Vec::new(),
+    };
+    print_claim_operation_report(&report, json)?;
+
+    Ok(())
+}
+
+fn list_claims(json: bool) -> Result<(), AppError> {
+    let repository = GitRepository::discover(".")?;
+    let store = ClaimStore::for_repository(&repository);
+    let claims = store.load()?;
+    let report = ClaimsReport {
+        repository_root: repository.root().display().to_string(),
+        claims_path: store.path().display().to_string(),
+        claims: claims.claims().to_vec(),
+    };
+
+    if json {
+        println!("{}", serde_json::to_string_pretty(&report)?);
+        return Ok(());
+    }
+
+    print_claims_report(&report);
+    Ok(())
+}
+
+fn unclaim_current_scope(json: bool, agent: String, pair_name: String) -> Result<(), AppError> {
+    validate_agent_name(&agent)?;
+    let repository = GitRepository::discover(".")?;
+    let current_branch = repository.current_branch()?;
+    let store = ClaimStore::for_repository(&repository);
+    let mut claims = store.load()?;
+
+    let removed = claims
+        .remove(&agent, &pair_name, &current_branch)
+        .ok_or_else(|| AppError::ClaimNotFound {
+            agent: agent.clone(),
+            pair: pair_name.clone(),
+            branch: current_branch.clone(),
+        })?;
+    store.save(&claims)?;
+
+    let report = ClaimOperationReport {
+        ok: true,
+        status: "released",
+        repository_root: repository.root().display().to_string(),
+        claims_path: store.path().display().to_string(),
+        agent,
+        pair: pair_name,
+        branch: current_branch,
+        claim: Some(removed),
+        conflict: None,
+        refusal_reasons: Vec::new(),
+    };
+    print_claim_operation_report(&report, json)?;
+
+    Ok(())
 }
 
 fn run_doctor(json: bool) -> Result<(), AppError> {
@@ -809,6 +941,54 @@ fn print_assert_report(report: &AssertReport) {
     }
 }
 
+fn print_claim_operation_report(report: &ClaimOperationReport, json: bool) -> Result<(), AppError> {
+    if json {
+        println!("{}", serde_json::to_string_pretty(report)?);
+        return Ok(());
+    }
+
+    println!("Claim: {}", report.status);
+    println!("Repository: {}", report.repository_root);
+    println!("Claims metadata: {}", report.claims_path);
+    println!("Agent: {}", report.agent);
+    println!("Pair: {}", report.pair);
+    println!("Branch: {}", report.branch);
+
+    if let Some(conflict) = &report.conflict {
+        println!("Conflict: claimed by {}", conflict.agent);
+    }
+
+    if !report.refusal_reasons.is_empty() {
+        let reasons = report
+            .refusal_reasons
+            .iter()
+            .map(ToString::to_string)
+            .collect::<Vec<_>>()
+            .join("; ");
+        println!("Refused: {reasons}");
+    }
+
+    Ok(())
+}
+
+fn print_claims_report(report: &ClaimsReport) {
+    println!("Repository: {}", report.repository_root);
+    println!("Claims metadata: {}", report.claims_path);
+
+    if report.claims.is_empty() {
+        println!("No active agent claims.");
+        return;
+    }
+
+    println!("Claims:");
+    for claim in &report.claims {
+        println!(
+            "- {}: {} on {} (created_at_unix: {})",
+            claim.agent, claim.pair, claim.branch, claim.created_at_unix
+        );
+    }
+}
+
 fn format_branch_health(left_exists: bool, right_exists: bool, left: &str, right: &str) -> String {
     match (left_exists, right_exists) {
         (true, true) => "ok".to_owned(),
@@ -898,6 +1078,27 @@ struct AssertPairReport {
     configured: bool,
     current_side: Option<&'static str>,
     expected_side: Option<&'static str>,
+}
+
+#[derive(Debug, Serialize)]
+struct ClaimOperationReport {
+    ok: bool,
+    status: &'static str,
+    repository_root: String,
+    claims_path: String,
+    agent: String,
+    pair: String,
+    branch: String,
+    claim: Option<AgentClaim>,
+    conflict: Option<AgentClaim>,
+    refusal_reasons: Vec<RefusalReason>,
+}
+
+#[derive(Debug, Serialize)]
+struct ClaimsReport {
+    repository_root: String,
+    claims_path: String,
+    claims: Vec<AgentClaim>,
 }
 
 #[derive(Debug, Serialize)]
@@ -1029,6 +1230,10 @@ fn pair_side_name(side: PairSide) -> &'static str {
     }
 }
 
+fn current_unix_timestamp() -> Result<u64, AppError> {
+    Ok(SystemTime::now().duration_since(UNIX_EPOCH)?.as_secs())
+}
+
 fn ensure_branch_exists(repository: &GitRepository, branch: &str) -> Result<(), AppError> {
     if repository.branch_exists(branch)? {
         return Ok(());
@@ -1051,19 +1256,59 @@ fn ensure_branch_name_is_valid(repository: &GitRepository, branch: &str) -> Resu
 
 #[derive(Debug)]
 pub enum AppError {
-    AssertFailed { failures: Vec<String> },
-    BranchNotFound { branch: String },
+    AssertFailed {
+        failures: Vec<String>,
+    },
+    BranchNotFound {
+        branch: String,
+    },
+    Claim {
+        source: ClaimError,
+    },
+    ClaimConflict {
+        agent: String,
+        pair: String,
+        branch: String,
+    },
+    ClaimNotFound {
+        agent: String,
+        pair: String,
+        branch: String,
+    },
+    Clock {
+        source: SystemTimeError,
+    },
     DoctorFailed,
-    Git { source: GitError },
-    InvalidBranchName { branch: String },
-    Metadata { source: MetadataError },
-    Pair { source: PairError },
-    PairAlreadyExists { name: String },
-    PairNotFound { name: String },
-    PreflightRefused { reasons: Vec<RefusalReason> },
-    Serialize { source: serde_json::Error },
-    Status { source: StatusError },
-    SwitchRefused { reasons: Vec<RefusalReason> },
+    Git {
+        source: GitError,
+    },
+    InvalidBranchName {
+        branch: String,
+    },
+    Metadata {
+        source: MetadataError,
+    },
+    Pair {
+        source: PairError,
+    },
+    PairAlreadyExists {
+        name: String,
+    },
+    PairNotFound {
+        name: String,
+    },
+    PreflightRefused {
+        reasons: Vec<RefusalReason>,
+    },
+    Serialize {
+        source: serde_json::Error,
+    },
+    Status {
+        source: StatusError,
+    },
+    SwitchRefused {
+        reasons: Vec<RefusalReason>,
+    },
 }
 
 impl Display for AppError {
@@ -1073,6 +1318,24 @@ impl Display for AppError {
                 write!(formatter, "assertion failed: {}", failures.join("; "))
             }
             Self::BranchNotFound { branch } => write!(formatter, "branch '{branch}' was not found"),
+            Self::Claim { source } => Display::fmt(source, formatter),
+            Self::ClaimConflict {
+                agent,
+                pair,
+                branch,
+            } => write!(
+                formatter,
+                "pair '{pair}' on branch '{branch}' is already claimed by agent '{agent}'"
+            ),
+            Self::ClaimNotFound {
+                agent,
+                pair,
+                branch,
+            } => write!(
+                formatter,
+                "no claim for agent '{agent}' on pair '{pair}' and branch '{branch}'"
+            ),
+            Self::Clock { source } => Display::fmt(source, formatter),
             Self::DoctorFailed => write!(formatter, "doctor found problems"),
             Self::Git { source } => Display::fmt(source, formatter),
             Self::InvalidBranchName { branch } => {
@@ -1107,6 +1370,8 @@ impl Display for AppError {
 impl Error for AppError {
     fn source(&self) -> Option<&(dyn Error + 'static)> {
         match self {
+            Self::Claim { source } => Some(source),
+            Self::Clock { source } => Some(source),
             Self::Git { source } => Some(source),
             Self::Metadata { source } => Some(source),
             Self::Pair { source } => Some(source),
@@ -1114,6 +1379,8 @@ impl Error for AppError {
             Self::Status { source } => Some(source),
             Self::AssertFailed { .. }
             | Self::BranchNotFound { .. }
+            | Self::ClaimConflict { .. }
+            | Self::ClaimNotFound { .. }
             | Self::DoctorFailed
             | Self::InvalidBranchName { .. }
             | Self::PairAlreadyExists { .. }
@@ -1129,17 +1396,24 @@ impl AppError {
         match self {
             Self::AssertFailed { .. }
             | Self::BranchNotFound { .. }
+            | Self::Claim { .. }
+            | Self::ClaimNotFound { .. }
             | Self::InvalidBranchName { .. }
             | Self::Pair { .. }
             | Self::PairAlreadyExists { .. }
             | Self::PairNotFound { .. }
             | Self::Status { .. } => 2,
-            Self::PreflightRefused { .. } | Self::SwitchRefused { .. } => 3,
+            Self::ClaimConflict { .. }
+            | Self::PreflightRefused { .. }
+            | Self::SwitchRefused { .. } => 3,
             Self::DoctorFailed => 4,
             Self::Git {
                 source: GitError::DetachedHead | GitError::NotRepository,
             } => 2,
-            Self::Git { .. } | Self::Metadata { .. } | Self::Serialize { .. } => 1,
+            Self::Clock { .. }
+            | Self::Git { .. }
+            | Self::Metadata { .. }
+            | Self::Serialize { .. } => 1,
         }
     }
 
@@ -1147,6 +1421,10 @@ impl AppError {
         match self {
             Self::AssertFailed { .. } => "assert_failed",
             Self::BranchNotFound { .. } => "branch_not_found",
+            Self::Claim { .. } => "claim_error",
+            Self::ClaimConflict { .. } => "claim_conflict",
+            Self::ClaimNotFound { .. } => "claim_not_found",
+            Self::Clock { .. } => "clock_error",
             Self::DoctorFailed => "doctor_failed",
             Self::Git { source } => source.kind(),
             Self::InvalidBranchName { .. } => "invalid_branch_name",
@@ -1177,6 +1455,18 @@ impl From<MetadataError> for AppError {
 impl From<PairError> for AppError {
     fn from(source: PairError) -> Self {
         Self::Pair { source }
+    }
+}
+
+impl From<ClaimError> for AppError {
+    fn from(source: ClaimError) -> Self {
+        Self::Claim { source }
+    }
+}
+
+impl From<SystemTimeError> for AppError {
+    fn from(source: SystemTimeError) -> Self {
+        Self::Clock { source }
     }
 }
 

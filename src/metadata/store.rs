@@ -1,4 +1,4 @@
-use crate::core::BranchPairs;
+use crate::core::{AgentClaims, BranchPairs};
 use crate::git::GitRepository;
 use atomic_write_file::AtomicWriteFile;
 use std::error::Error;
@@ -58,6 +58,74 @@ impl MetadataStore {
 
         let contents =
             toml::to_string_pretty(pairs).map_err(|source| MetadataError::Encode { source })?;
+        let mut file =
+            AtomicWriteFile::open(&self.path).map_err(|source| MetadataError::Write {
+                path: self.path.clone(),
+                source,
+            })?;
+        file.write_all(contents.as_bytes())
+            .map_err(|source| MetadataError::Write {
+                path: self.path.clone(),
+                source,
+            })?;
+        file.commit().map_err(|source| MetadataError::Write {
+            path: self.path.clone(),
+            source,
+        })
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct ClaimStore {
+    path: PathBuf,
+}
+
+impl ClaimStore {
+    pub fn for_repository(repository: &GitRepository) -> Self {
+        Self {
+            path: repository.git_dir().join("zaphod").join("claims.toml"),
+        }
+    }
+
+    #[cfg(test)]
+    pub fn at_path(path: impl Into<PathBuf>) -> Self {
+        Self { path: path.into() }
+    }
+
+    pub fn path(&self) -> &Path {
+        &self.path
+    }
+
+    pub fn load(&self) -> Result<AgentClaims, MetadataError> {
+        if !self.path.exists() {
+            return Ok(AgentClaims::default());
+        }
+
+        let contents = fs::read_to_string(&self.path).map_err(|source| MetadataError::Read {
+            path: self.path.clone(),
+            source,
+        })?;
+
+        toml::from_str(&contents).map_err(|source| MetadataError::Decode {
+            path: self.path.clone(),
+            source,
+        })
+    }
+
+    pub fn save(&self, claims: &AgentClaims) -> Result<(), MetadataError> {
+        let parent = self
+            .path
+            .parent()
+            .ok_or_else(|| MetadataError::MissingParent {
+                path: self.path.clone(),
+            })?;
+        fs::create_dir_all(parent).map_err(|source| MetadataError::CreateDirectory {
+            path: parent.to_path_buf(),
+            source,
+        })?;
+
+        let contents =
+            toml::to_string_pretty(claims).map_err(|source| MetadataError::Encode { source })?;
         let mut file =
             AtomicWriteFile::open(&self.path).map_err(|source| MetadataError::Write {
                 path: self.path.clone(),
@@ -155,8 +223,8 @@ impl Error for MetadataError {
 
 #[cfg(test)]
 mod tests {
-    use super::MetadataStore;
-    use crate::core::{BranchPair, BranchPairs};
+    use super::{ClaimStore, MetadataStore};
+    use crate::core::{AgentClaim, AgentClaims, BranchPair, BranchPairs};
     use std::fs;
     use std::path::{Path, PathBuf};
     use std::sync::atomic::{AtomicUsize, Ordering};
@@ -246,5 +314,36 @@ mod tests {
 
         let loaded = store.load().expect("load pairs");
         assert_eq!(loaded, second);
+    }
+
+    #[test]
+    fn missing_claims_metadata_loads_empty_claims() {
+        let dir = TestDir::new();
+        let store = ClaimStore::at_path(dir.path().join("zaphod").join("claims.toml"));
+
+        let claims = store.load().expect("load claims");
+
+        assert!(claims.is_empty());
+    }
+
+    #[test]
+    fn saves_and_loads_claims() {
+        let dir = TestDir::new();
+        let store = ClaimStore::at_path(dir.path().join("zaphod").join("claims.toml"));
+        let mut claims = AgentClaims::default();
+        claims.upsert(
+            AgentClaim::new(
+                "codex".to_owned(),
+                "default".to_owned(),
+                "feature/api".to_owned(),
+                42,
+            )
+            .expect("valid claim"),
+        );
+
+        store.save(&claims).expect("save claims");
+
+        let loaded = store.load().expect("load claims");
+        assert_eq!(loaded, claims);
     }
 }
