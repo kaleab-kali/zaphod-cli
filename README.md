@@ -23,7 +23,7 @@ Zaphod is in early development. The current `0.1.x` CLI can:
 - Emit a handoff snapshot for agent-to-agent continuation.
 - Refuse unsafe switches when the worktree is dirty or Git is mid-operation.
 - Emit JSON status for scripts.
-- Diagnose repository, metadata, and branch-pair health in text or JSON.
+- Diagnose repository, metadata, branch-pair, and claim health in text or JSON.
 - Generate shell completions.
 
 Until Zaphod reaches `1.0`, command names and output may change between minor
@@ -558,7 +558,12 @@ For scripts, use JSON output:
 
 ```sh
 zaphod doctor --json
+zaphod doctor --stale-after 2h --json
 ```
+
+Use `--stale-after` to make `doctor` report stale agent claims as repository
+health problems. This is read-only; cleanup still requires `unclaim` or
+`prune-claims --apply`.
 
 ### `zaphod unpair`
 

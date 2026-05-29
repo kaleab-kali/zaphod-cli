@@ -7,6 +7,10 @@ and this project intends to follow semantic versioning once releases begin.
 
 ## Unreleased
 
+### Added
+
+- `doctor --stale-after` for read-only stale claim health checks.
+
 ## 0.1.6 - 2026-05-30
 
 ### Added

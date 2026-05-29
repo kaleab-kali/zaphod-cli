@@ -63,7 +63,7 @@ pub fn run(cli: Cli) -> Result<(), AppError> {
             branch,
         } => unclaim_current_scope(json, agent, pair, branch),
         CliCommand::Handoff { json, name, agent } => show_handoff(json, name, agent),
-        CliCommand::Doctor { json } => run_doctor(json),
+        CliCommand::Doctor { json, stale_after } => run_doctor(json, stale_after),
         CliCommand::Completions { shell } => generate_completions(shell),
     }
 }
@@ -826,8 +826,12 @@ fn finish_handoff_with_error(
     Err(error)
 }
 
-fn run_doctor(json: bool) -> Result<(), AppError> {
-    let report = build_doctor_report();
+fn run_doctor(json: bool, stale_after: Option<String>) -> Result<(), AppError> {
+    let stale_after_seconds = stale_after
+        .as_deref()
+        .map(parse_duration_seconds)
+        .transpose()?;
+    let report = build_doctor_report(stale_after_seconds);
 
     if json {
         println!("{}", serde_json::to_string_pretty(&report)?);
@@ -842,7 +846,7 @@ fn run_doctor(json: bool) -> Result<(), AppError> {
     }
 }
 
-fn build_doctor_report() -> DoctorReport {
+fn build_doctor_report(stale_after_seconds: Option<u64>) -> DoctorReport {
     let mut report = DoctorReport::default();
 
     match GitRepository::version() {
@@ -968,6 +972,52 @@ fn build_doctor_report() -> DoctorReport {
         }
     }
 
+    let claim_store = ClaimStore::for_repository(&repository);
+    match claim_store.load() {
+        Ok(claims) => {
+            let now_unix = current_unix_timestamp().ok();
+            let stale_claims = match (stale_after_seconds, now_unix) {
+                (Some(stale_after_seconds), Some(now_unix)) => claims
+                    .claims()
+                    .iter()
+                    .filter(|claim| claim_is_stale(claim, now_unix, stale_after_seconds))
+                    .cloned()
+                    .collect::<Vec<_>>(),
+                _ => Vec::new(),
+            };
+
+            if !stale_claims.is_empty() || (stale_after_seconds.is_some() && now_unix.is_none()) {
+                report.healthy = false;
+            }
+
+            report.claims = Some(DoctorClaimsReport {
+                ok: stale_after_seconds.is_none_or(|_| now_unix.is_some()),
+                path: Some(claim_store.path().display().to_string()),
+                claim_count: Some(claims.claims().len()),
+                stale_after_seconds,
+                stale_claim_count: Some(stale_claims.len()),
+                stale_claims,
+                error: if stale_after_seconds.is_some() && now_unix.is_none() {
+                    Some("system clock is before the Unix epoch".to_owned())
+                } else {
+                    None
+                },
+            });
+        }
+        Err(error) => {
+            report.healthy = false;
+            report.claims = Some(DoctorClaimsReport {
+                ok: false,
+                path: Some(claim_store.path().display().to_string()),
+                claim_count: None,
+                stale_after_seconds,
+                stale_claim_count: None,
+                stale_claims: Vec::new(),
+                error: Some(error.to_string()),
+            });
+        }
+    }
+
     report
 }
 
@@ -1038,6 +1088,33 @@ fn print_doctor_report(report: &DoctorReport) {
             }
         } else if let Some(error) = &metadata.error {
             println!("Metadata: error ({error})");
+        }
+    }
+
+    if let Some(claims) = &report.claims {
+        if claims.ok {
+            println!(
+                "Claims: ok ({} claim(s), {})",
+                claims.claim_count.unwrap_or_default(),
+                claims.path.as_deref().unwrap_or("unknown")
+            );
+            if let Some(stale_after_seconds) = claims.stale_after_seconds {
+                let stale_claim_count = claims.stale_claim_count.unwrap_or_default();
+                println!(
+                    "Stale claims: {} older than {}s",
+                    stale_claim_count, stale_after_seconds
+                );
+                if !claims.stale_claims.is_empty() {
+                    for claim in &claims.stale_claims {
+                        println!(
+                            "- {}: {} on {} (created_at_unix: {})",
+                            claim.agent, claim.pair, claim.branch, claim.created_at_unix
+                        );
+                    }
+                }
+            }
+        } else if let Some(error) = &claims.error {
+            println!("Claims: error ({error})");
         }
     }
 }
@@ -1716,6 +1793,7 @@ struct DoctorReport {
     worktree: Option<DoctorWorktreeReport>,
     git_state: Option<String>,
     metadata: Option<DoctorMetadataReport>,
+    claims: Option<DoctorClaimsReport>,
 }
 
 impl Default for DoctorReport {
@@ -1728,6 +1806,7 @@ impl Default for DoctorReport {
             worktree: None,
             git_state: None,
             metadata: None,
+            claims: None,
         }
     }
 }
@@ -1777,6 +1856,17 @@ struct DoctorPairReport {
     right: String,
     ok: bool,
     summary: String,
+}
+
+#[derive(Debug, Serialize)]
+struct DoctorClaimsReport {
+    ok: bool,
+    path: Option<String>,
+    claim_count: Option<usize>,
+    stale_after_seconds: Option<u64>,
+    stale_claim_count: Option<usize>,
+    stale_claims: Vec<AgentClaim>,
+    error: Option<String>,
 }
 
 fn pair_side_for_branch(pair: &BranchPair, branch: &str) -> Option<PairSide> {
