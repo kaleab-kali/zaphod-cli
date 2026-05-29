@@ -7,6 +7,8 @@ and this project intends to follow semantic versioning once releases begin.
 
 ## Unreleased
 
+## 0.1.3 - 2026-05-29
+
 ### Added
 
 - `assert` command for read-only branch, pair, and pair-side checks before
