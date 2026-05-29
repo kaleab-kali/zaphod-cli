@@ -9,6 +9,8 @@ and this project intends to follow semantic versioning once releases begin.
 
 ### Added
 
+- `assert` command for read-only branch, pair, and pair-side checks before
+  scripted or agentic work starts.
 - `preflight --json` for read-only agent readiness checks before paired-branch
   work.
 

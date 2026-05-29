@@ -281,6 +281,42 @@ fn preflight_json_reports_ready_pair() {
 }
 
 #[test]
+fn assert_json_passes_for_expected_pair_branch_and_side() {
+    let dir = TestDir::new("zaphod-cli-metadata");
+    init_repo_with_pair_branches(dir.path());
+    let pair = zaphod(dir.path(), ["pair", "feature/api", "feature/ui"]);
+    assert_success(&pair);
+
+    let output = zaphod(
+        dir.path(),
+        [
+            "assert",
+            "--json",
+            "--pair",
+            "default",
+            "--branch",
+            "feature/api",
+            "--side",
+            "left",
+        ],
+    );
+
+    assert_success(&output);
+    let report: serde_json::Value = serde_json::from_slice(&output.stdout).expect("assert json");
+    assert_eq!(report["ok"], true);
+    assert_eq!(report["current_branch"], "feature/api");
+    assert_eq!(report["expected_branch"], "feature/api");
+    assert_eq!(report["pair"]["name"], "default");
+    assert_eq!(report["pair"]["left"], "feature/api");
+    assert_eq!(report["pair"]["right"], "feature/ui");
+    assert_eq!(report["pair"]["configured"], true);
+    assert_eq!(report["pair"]["current_side"], "left");
+    assert_eq!(report["pair"]["expected_side"], "left");
+    assert_eq!(report["failures"], json!([]));
+    assert!(report["repository_root"].as_str().is_some());
+}
+
+#[test]
 fn status_reports_dirty_worktree_refusal() {
     let dir = TestDir::new("zaphod-cli-metadata");
     init_repo_with_pair_branches(dir.path());
