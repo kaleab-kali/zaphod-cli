@@ -63,6 +63,24 @@ fn handoff_json_reports_directory_outside_git_repository() {
 }
 
 #[test]
+fn init_rejects_invalid_or_missing_other_branch() {
+    let dir = TestDir::new("zaphod-cli-safety");
+    init_repo_with_pair_branches(dir.path());
+
+    let output = zaphod(dir.path(), ["init", "feature..ui"]);
+
+    assert!(!output.status.success());
+    assert_eq!(output.status.code(), Some(2));
+    assert_stderr_contains(&output, "branch name 'feature..ui' is invalid");
+
+    let output = zaphod(dir.path(), ["init", "feature/missing"]);
+
+    assert!(!output.status.success());
+    assert_eq!(output.status.code(), Some(2));
+    assert_stderr_contains(&output, "branch 'feature/missing' was not found");
+}
+
+#[test]
 fn status_rejects_detached_head() {
     let dir = TestDir::new("zaphod-cli-safety");
     init_repo_with_pair_branches(dir.path());

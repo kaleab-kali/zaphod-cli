@@ -85,6 +85,40 @@ fn pair_list_and_unpair_update_repo_metadata() {
 }
 
 #[test]
+fn init_pairs_current_branch_with_other_branch() {
+    let dir = TestDir::new("zaphod-cli-metadata");
+    init_repo_with_pair_branches(dir.path());
+    assert_eq!(current_branch(dir.path()), "feature/api");
+
+    let init = zaphod(dir.path(), ["init", "feature/ui"]);
+
+    assert_success(&init);
+    assert_stdout_contains(
+        &init,
+        "Initialized pair 'default': feature/api <-> feature/ui",
+    );
+
+    let list = zaphod(dir.path(), ["list", "--json"]);
+    assert_success(&list);
+    let pairs: serde_json::Value = serde_json::from_slice(&list.stdout).expect("list json");
+    assert_eq!(
+        pairs,
+        json!([
+            {
+                "name": "default",
+                "left": "feature/api",
+                "right": "feature/ui",
+            }
+        ])
+    );
+
+    let status = zaphod(dir.path(), ["status"]);
+    assert_success(&status);
+    assert_stdout_contains(&status, "Current: feature/api");
+    assert_stdout_contains(&status, "Other: feature/ui");
+}
+
+#[test]
 fn rename_updates_pair_name() {
     let dir = TestDir::new("zaphod-cli-metadata");
     init_repo_with_pair_branches(dir.path());

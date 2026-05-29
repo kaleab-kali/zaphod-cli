@@ -194,6 +194,15 @@ zaphod --help
 Inside a Git repository with two existing local branches:
 
 ```sh
+zaphod init feature/ui
+zaphod status
+zaphod switch
+```
+
+`init` uses the current branch as one side of the pair. You can also name both
+branches explicitly:
+
+```sh
 zaphod pair feature/api feature/ui
 zaphod status
 zaphod switch
@@ -294,6 +303,19 @@ zaphod pair main feature/api --name api
 Both branches must already exist locally.
 Branch names are validated with Git's branch-name rules before Zaphod stores
 the pair.
+
+### `zaphod init <other>`
+
+Store a branch pair using the current branch and another local branch:
+
+```sh
+zaphod init feature/ui
+zaphod init feature/ui --name api
+```
+
+Both branches must already exist locally. `init` refuses detached HEADs, invalid
+branch names, missing branches, and attempts to pair the current branch with
+itself.
 
 ### `zaphod preflight`
 

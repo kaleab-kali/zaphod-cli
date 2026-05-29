@@ -32,6 +32,16 @@ pub enum CliCommand {
         name: String,
     },
 
+    /// Pair the current branch with another local branch.
+    Init {
+        /// Other branch to pair with the current branch.
+        other: String,
+
+        /// Pair name.
+        #[arg(long, default_value = "default")]
+        name: String,
+    },
+
     /// Show the current branch pair status.
     Status {
         /// Emit machine-readable JSON.
@@ -258,6 +268,19 @@ mod tests {
             CliCommand::Pair {
                 left: "feature/api".to_owned(),
                 right: "feature/ui".to_owned(),
+                name: "default".to_owned(),
+            }
+        );
+    }
+
+    #[test]
+    fn parses_init_command_with_default_name() {
+        let cli = Cli::parse_from(["zaphod", "init", "feature/ui"]);
+
+        assert_eq!(
+            cli.command,
+            CliCommand::Init {
+                other: "feature/ui".to_owned(),
                 name: "default".to_owned(),
             }
         );

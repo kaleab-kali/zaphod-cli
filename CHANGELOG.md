@@ -7,6 +7,10 @@ and this project intends to follow semantic versioning once releases begin.
 
 ## Unreleased
 
+### Added
+
+- `init` command for pairing the current branch with another local branch.
+
 ## 0.1.5 - 2026-05-30
 
 ### Added
