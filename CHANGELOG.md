@@ -7,6 +7,11 @@ and this project intends to follow semantic versioning once releases begin.
 
 ## Unreleased
 
+### Added
+
+- `handoff --stale-after` for marking old claim conflicts in agent handoff
+  snapshots.
+
 ## 0.1.7 - 2026-05-30
 
 ### Added

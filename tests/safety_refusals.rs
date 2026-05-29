@@ -63,6 +63,24 @@ fn handoff_json_reports_directory_outside_git_repository() {
 }
 
 #[test]
+fn handoff_rejects_invalid_stale_claim_window() {
+    let dir = TestDir::new("zaphod-cli-safety");
+    init_repo_with_pair_branches(dir.path());
+
+    let output = zaphod(
+        dir.path(),
+        ["handoff", "--agent", "codex", "--stale-after", "later"],
+    );
+
+    assert!(!output.status.success());
+    assert_eq!(output.status.code(), Some(2));
+    assert_stderr_contains(
+        &output,
+        "duration 'later' is invalid; use a positive number followed by s, m, h, or d",
+    );
+}
+
+#[test]
 fn init_rejects_invalid_or_missing_other_branch() {
     let dir = TestDir::new("zaphod-cli-safety");
     init_repo_with_pair_branches(dir.path());
