@@ -112,6 +112,18 @@ pub enum CliCommand {
         /// Emit machine-readable JSON.
         #[arg(long)]
         json: bool,
+
+        /// Filter claims by agent/session name.
+        #[arg(long)]
+        agent: Option<String>,
+
+        /// Filter claims by pair name.
+        #[arg(long)]
+        pair: Option<String>,
+
+        /// Filter claims by branch name.
+        #[arg(long)]
+        branch: Option<String>,
     },
 
     /// Release an agent session claim for the current pair and branch.
@@ -378,9 +390,27 @@ mod tests {
 
     #[test]
     fn parses_claims_command() {
-        let cli = Cli::parse_from(["zaphod", "claims", "--json"]);
+        let cli = Cli::parse_from([
+            "zaphod",
+            "claims",
+            "--json",
+            "--agent",
+            "codex",
+            "--pair",
+            "api",
+            "--branch",
+            "feature/api",
+        ]);
 
-        assert_eq!(cli.command, CliCommand::Claims { json: true });
+        assert_eq!(
+            cli.command,
+            CliCommand::Claims {
+                json: true,
+                agent: Some("codex".to_owned()),
+                pair: Some("api".to_owned()),
+                branch: Some("feature/api".to_owned()),
+            }
+        );
     }
 
     #[test]

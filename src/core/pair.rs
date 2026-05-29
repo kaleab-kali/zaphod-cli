@@ -95,7 +95,7 @@ impl Display for PairError {
 
 impl Error for PairError {}
 
-fn validate_pair_name(name: &str) -> Result<(), PairError> {
+pub fn validate_pair_name(name: &str) -> Result<(), PairError> {
     if name.is_empty() {
         return Err(PairError::EmptyPairName);
     }

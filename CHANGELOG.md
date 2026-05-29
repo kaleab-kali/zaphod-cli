@@ -9,6 +9,8 @@ and this project intends to follow semantic versioning once releases begin.
 
 ### Added
 
+- `claims --agent`, `claims --pair`, and `claims --branch` filters for
+  script-friendly agent claim lookups.
 - `handoff` command for read-only agent continuation snapshots with pair,
   worktree, Git state, and claim details.
 - `unclaim --branch` for releasing stale agent claims without switching
