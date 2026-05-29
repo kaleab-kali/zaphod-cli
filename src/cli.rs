@@ -233,6 +233,10 @@ pub enum CliCommand {
         /// Emit machine-readable JSON.
         #[arg(long)]
         json: bool,
+
+        /// Report claims older than this duration as stale, for example 30m, 2h, or 1d.
+        #[arg(long)]
+        stale_after: Option<String>,
     },
 
     /// Generate shell completion scripts.
@@ -567,13 +571,25 @@ mod tests {
     fn parses_doctor_command() {
         let cli = Cli::parse_from(["zaphod", "doctor"]);
 
-        assert_eq!(cli.command, CliCommand::Doctor { json: false });
+        assert_eq!(
+            cli.command,
+            CliCommand::Doctor {
+                json: false,
+                stale_after: None,
+            }
+        );
     }
 
     #[test]
     fn parses_doctor_json_flag() {
-        let cli = Cli::parse_from(["zaphod", "doctor", "--json"]);
+        let cli = Cli::parse_from(["zaphod", "doctor", "--json", "--stale-after", "2h"]);
 
-        assert_eq!(cli.command, CliCommand::Doctor { json: true });
+        assert_eq!(
+            cli.command,
+            CliCommand::Doctor {
+                json: true,
+                stale_after: Some("2h".to_owned()),
+            }
+        );
     }
 }

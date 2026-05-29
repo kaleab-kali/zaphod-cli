@@ -436,6 +436,21 @@ fn claims_rejects_invalid_filter_values() {
 }
 
 #[test]
+fn doctor_rejects_invalid_stale_claim_window() {
+    let dir = TestDir::new("zaphod-cli-safety");
+    init_repo_with_pair_branches(dir.path());
+
+    let output = zaphod(dir.path(), ["doctor", "--stale-after", "later"]);
+
+    assert!(!output.status.success());
+    assert_eq!(output.status.code(), Some(2));
+    assert_stderr_contains(
+        &output,
+        "duration 'later' is invalid; use a positive number followed by s, m, h, or d",
+    );
+}
+
+#[test]
 fn prune_claims_rejects_invalid_inputs() {
     let dir = TestDir::new("zaphod-cli-safety");
     init_repo_with_pair_branches(dir.path());

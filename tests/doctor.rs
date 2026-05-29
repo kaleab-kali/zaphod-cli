@@ -25,6 +25,7 @@ fn doctor_reports_healthy_repository() {
     assert_stdout_contains(&output, "Metadata: ok (1 pair(s), ");
     assert_stdout_contains(&output, "Pairs:");
     assert_stdout_contains(&output, "- default: feature/api <-> feature/ui [ok]");
+    assert_stdout_contains(&output, "Claims: ok (0 claim(s), ");
 }
 
 #[test]
@@ -52,6 +53,9 @@ fn doctor_can_emit_json_for_healthy_repository() {
     assert_eq!(report["git_state"], "ready");
     assert_eq!(report["metadata"]["ok"], true);
     assert_eq!(report["metadata"]["pair_count"], 1);
+    assert_eq!(report["claims"]["ok"], true);
+    assert_eq!(report["claims"]["claim_count"], 0);
+    assert!(report["claims"]["stale_after_seconds"].is_null());
     assert_eq!(
         report["metadata"]["pairs"],
         json!([
@@ -64,6 +68,63 @@ fn doctor_can_emit_json_for_healthy_repository() {
             }
         ])
     );
+}
+
+#[test]
+fn doctor_json_reports_stale_claims() {
+    let dir = TestDir::new("zaphod-cli-doctor");
+    init_repo_with_pair_branches(dir.path());
+    let pair = zaphod(dir.path(), ["pair", "feature/api", "feature/ui"]);
+    assert_success(&pair);
+    let metadata_dir = dir.git_dir().join("zaphod");
+    fs::create_dir_all(&metadata_dir).expect("create zaphod metadata directory");
+    fs::write(
+        metadata_dir.join("claims.toml"),
+        r#"[[claims]]
+agent = "old-agent"
+pair = "default"
+branch = "feature/api"
+created_at_unix = 1
+
+[[claims]]
+agent = "fresh-agent"
+pair = "default"
+branch = "feature/api"
+created_at_unix = 4102444800
+"#,
+    )
+    .expect("write claims metadata");
+
+    let output = zaphod(dir.path(), ["doctor", "--json", "--stale-after", "1d"]);
+
+    assert!(!output.status.success());
+    assert_eq!(output.status.code(), Some(4));
+    let report: serde_json::Value = serde_json::from_slice(&output.stdout).expect("doctor json");
+    assert_eq!(report["healthy"], false);
+    assert_eq!(report["claims"]["ok"], true);
+    assert_eq!(report["claims"]["claim_count"], 2);
+    assert_eq!(report["claims"]["stale_after_seconds"], 86_400);
+    assert_eq!(report["claims"]["stale_claim_count"], 1);
+    assert_eq!(report["claims"]["stale_claims"][0]["agent"], "old-agent");
+    assert_stderr_contains(&output, "doctor found problems");
+}
+
+#[test]
+fn doctor_reports_corrupt_claims_metadata() {
+    let dir = TestDir::new("zaphod-cli-doctor");
+    init_repo_with_pair_branches(dir.path());
+    let pair = zaphod(dir.path(), ["pair", "feature/api", "feature/ui"]);
+    assert_success(&pair);
+    let metadata_dir = dir.git_dir().join("zaphod");
+    fs::create_dir_all(&metadata_dir).expect("create zaphod metadata directory");
+    fs::write(metadata_dir.join("claims.toml"), "claims = [").expect("write corrupt metadata");
+
+    let output = zaphod(dir.path(), ["doctor"]);
+
+    assert!(!output.status.success());
+    assert_eq!(output.status.code(), Some(4));
+    assert_stdout_contains(&output, "Claims: error (failed to parse metadata file");
+    assert_stderr_contains(&output, "doctor found problems");
 }
 
 #[test]
