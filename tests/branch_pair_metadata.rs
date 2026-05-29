@@ -622,10 +622,52 @@ fn handoff_json_reports_pair_claims_and_agent_readiness() {
     assert_eq!(report["claims"][0]["pair"], "default");
     assert_eq!(report["claim"]["requested_agent"], "other");
     assert_eq!(report["claim"]["claim_allowed"], false);
+    assert!(report["claim"]["stale_after_seconds"].is_null());
+    assert!(report["claim"]["conflict_stale"].is_null());
     assert_eq!(report["claim"]["conflict"]["agent"], "codex");
     assert_eq!(report["errors"], json!([]));
     assert!(report["generated_at_unix"].as_u64().is_some());
     assert!(report["repository_root"].as_str().is_some());
+}
+
+#[test]
+fn handoff_json_marks_stale_claim_conflicts() {
+    let dir = TestDir::new("zaphod-cli-metadata");
+    init_repo_with_pair_branches(dir.path());
+    let pair = zaphod(dir.path(), ["pair", "feature/api", "feature/ui"]);
+    assert_success(&pair);
+    let metadata_dir = dir.git_dir().join("zaphod");
+    fs::create_dir_all(&metadata_dir).expect("create zaphod metadata directory");
+    fs::write(
+        metadata_dir.join("claims.toml"),
+        r#"[[claims]]
+agent = "codex"
+pair = "default"
+branch = "feature/api"
+created_at_unix = 1
+"#,
+    )
+    .expect("write stale claim metadata");
+
+    let output = zaphod(
+        dir.path(),
+        [
+            "handoff",
+            "--json",
+            "--agent",
+            "other",
+            "--stale-after",
+            "1d",
+        ],
+    );
+
+    assert_success(&output);
+    let report: serde_json::Value = serde_json::from_slice(&output.stdout).expect("handoff json");
+    assert_eq!(report["claim"]["requested_agent"], "other");
+    assert_eq!(report["claim"]["claim_allowed"], false);
+    assert_eq!(report["claim"]["stale_after_seconds"], 86_400);
+    assert_eq!(report["claim"]["conflict_stale"], true);
+    assert_eq!(report["claim"]["conflict"]["agent"], "codex");
 }
 
 #[test]

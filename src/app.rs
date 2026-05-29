@@ -63,7 +63,12 @@ pub fn run(cli: Cli) -> Result<(), AppError> {
             pair,
             branch,
         } => unclaim_current_scope(json, agent, pair, branch),
-        CliCommand::Handoff { json, name, agent } => show_handoff(json, name, agent),
+        CliCommand::Handoff {
+            json,
+            name,
+            agent,
+            stale_after,
+        } => show_handoff(json, name, agent, stale_after),
         CliCommand::Doctor { json, stale_after } => run_doctor(json, stale_after),
         CliCommand::Completions { shell } => generate_completions(shell),
     }
@@ -783,10 +788,19 @@ fn unclaim_current_scope(
     Ok(())
 }
 
-fn show_handoff(json: bool, pair_name: String, agent: Option<String>) -> Result<(), AppError> {
+fn show_handoff(
+    json: bool,
+    pair_name: String,
+    agent: Option<String>,
+    stale_after: Option<String>,
+) -> Result<(), AppError> {
     if let Some(agent) = &agent {
         validate_agent_name(agent)?;
     }
+    let stale_after_seconds = stale_after
+        .as_deref()
+        .map(parse_duration_seconds)
+        .transpose()?;
 
     let mut report = HandoffReport {
         ok: false,
@@ -867,11 +881,26 @@ fn show_handoff(json: bool, pair_name: String, agent: Option<String>) -> Result<
         let conflict = claims
             .conflict_for_scope(&agent, &pair_report.pair, &pair_report.current)
             .cloned();
+        let now_unix = if stale_after_seconds.is_some() && conflict.is_some() {
+            Some(current_unix_timestamp()?)
+        } else {
+            None
+        };
+        let conflict_stale = conflict.as_ref().and_then(|conflict| {
+            stale_after_seconds.map(|stale_after_seconds| {
+                claim_is_stale(
+                    conflict,
+                    now_unix.expect("stale claim conflict reporting has a timestamp"),
+                    stale_after_seconds,
+                )
+            })
+        });
+
         report.claim = Some(PreflightClaimReport {
             requested_agent: agent,
             claim_allowed: conflict.is_none(),
-            stale_after_seconds: None,
-            conflict_stale: None,
+            stale_after_seconds,
+            conflict_stale,
             conflict,
         });
     }
@@ -1610,7 +1639,12 @@ fn print_handoff_report(report: &HandoffReport, json: bool) -> Result<(), AppErr
         if claim.claim_allowed {
             println!("Claim: allowed for {}", claim.requested_agent);
         } else if let Some(conflict) = &claim.conflict {
-            println!("Claim: refused (claimed by {})", conflict.agent);
+            let stale = match (claim.conflict_stale, claim.stale_after_seconds) {
+                (Some(true), Some(seconds)) => format!(", stale after {seconds}s"),
+                (Some(false), Some(seconds)) => format!(", not stale after {seconds}s"),
+                _ => String::new(),
+            };
+            println!("Claim: refused (claimed by {}{})", conflict.agent, stale);
         }
     }
 

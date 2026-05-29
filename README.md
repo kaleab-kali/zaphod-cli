@@ -63,7 +63,7 @@ zaphod preflight --agent codex --stale-after 2h --json
 zaphod claim --agent codex --pair api --json
 zaphod heartbeat --agent codex --pair api --json
 zaphod assert --pair api --side left --json
-zaphod handoff --agent codex --json
+zaphod handoff --agent codex --stale-after 2h --json
 zaphod status --json
 zaphod doctor --json
 zaphod switch --dry-run
@@ -114,7 +114,8 @@ fresh sessions stay visible without allowing silent takeover of another claim.
 
 For handoffs between agents or terminals, `zaphod handoff --json` captures the
 current branch, selected pair status, active claims, and claim readiness in one
-read-only report.
+read-only report. With `--stale-after`, the handoff can also mark old claim
+conflicts as stale without removing them.
 
 ## Safety Model
 
@@ -455,12 +456,18 @@ from:
 zaphod handoff
 zaphod handoff --json
 zaphod handoff --name api --agent codex --json
+zaphod handoff --name api --agent codex --stale-after 2h --json
 ```
 
 The handoff report includes repository root, current branch, worktree state,
 Git operation state, selected pair status, active claims, and optional claim
 readiness for the requested agent. It does not create claims, remove claims, or
 switch branches.
+
+Use `--stale-after` with `--agent` when the receiving agent needs to know
+whether a claim conflict looks abandoned. The value uses the same duration
+format as other stale-claim checks: a positive number followed by `s`, `m`, `h`,
+or `d`.
 
 ### `zaphod status`
 
