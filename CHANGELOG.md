@@ -7,6 +7,8 @@ and this project uses semantic versioning for published releases.
 
 ## Unreleased
 
+## 0.1.10 - 2026-05-30
+
 ### Added
 
 - `pair --json`, `init --json`, `rename --json`, and `unpair --json` for
