@@ -22,7 +22,7 @@ Zaphod is in early development. The current `0.1.x` CLI can:
 - Claim, heartbeat, and release a pair/branch for an agent session.
 - Emit a handoff snapshot for agent-to-agent continuation.
 - Refuse unsafe switches when the worktree is dirty or Git is mid-operation.
-- Emit JSON status and switch results for scripts.
+- Emit JSON status, switch, and pair-mutation results for scripts.
 - Diagnose repository, metadata, branch-pair, and claim health in text or JSON.
 - Generate shell completions.
 
@@ -311,6 +311,9 @@ Both branches must already exist locally.
 Branch names are validated with Git's branch-name rules before Zaphod stores
 the pair.
 
+Use `--json` to emit a structured report with the action, repository root,
+metadata path, stored pair, and previous pair when an existing name is updated.
+
 ### `zaphod init <other>`
 
 Store a branch pair using the current branch and another local branch:
@@ -323,6 +326,9 @@ zaphod init feature/ui --name api
 Both branches must already exist locally. `init` refuses detached HEADs, invalid
 branch names, missing branches, and attempts to pair the current branch with
 itself.
+
+Use `--json` to emit the same pair-mutation report as `pair`, with
+`"action": "initialized"` for newly stored pairs.
 
 ### `zaphod preflight`
 
@@ -583,6 +589,9 @@ zaphod rename default api
 Zaphod refuses to overwrite an existing pair name. Pair names must contain only
 letters, numbers, `.`, `_`, and `-`.
 
+Use `--json` to emit the renamed pair and its previous name in a structured
+pair-mutation report.
+
 ### `zaphod doctor`
 
 Diagnose Git availability, repository state, metadata health, and configured
@@ -620,6 +629,8 @@ Use `--name` to remove a named pair:
 ```sh
 zaphod unpair --name api
 ```
+
+Use `--json` to emit the removed pair and metadata path instead of prose.
 
 ### `zaphod completions <shell>`
 

@@ -30,6 +30,10 @@ pub enum CliCommand {
         /// Pair name.
         #[arg(long, default_value = "default")]
         name: String,
+
+        /// Emit machine-readable JSON.
+        #[arg(long)]
+        json: bool,
     },
 
     /// Pair the current branch with another local branch.
@@ -40,6 +44,10 @@ pub enum CliCommand {
         /// Pair name.
         #[arg(long, default_value = "default")]
         name: String,
+
+        /// Emit machine-readable JSON.
+        #[arg(long)]
+        json: bool,
     },
 
     /// Show the current branch pair status.
@@ -230,6 +238,10 @@ pub enum CliCommand {
 
     /// Remove a branch pair.
     Unpair {
+        /// Emit machine-readable JSON.
+        #[arg(long)]
+        json: bool,
+
         /// Pair name.
         #[arg(long, default_value = "default")]
         name: String,
@@ -237,6 +249,10 @@ pub enum CliCommand {
 
     /// Rename a branch pair.
     Rename {
+        /// Emit machine-readable JSON.
+        #[arg(long)]
+        json: bool,
+
         /// Current pair name.
         old: String,
 
@@ -296,6 +312,7 @@ mod tests {
                 left: "feature/api".to_owned(),
                 right: "feature/ui".to_owned(),
                 name: "default".to_owned(),
+                json: false,
             }
         );
     }
@@ -309,6 +326,7 @@ mod tests {
             CliCommand::Init {
                 other: "feature/ui".to_owned(),
                 name: "default".to_owned(),
+                json: false,
             }
         );
     }
@@ -378,8 +396,50 @@ mod tests {
         assert_eq!(
             cli.command,
             CliCommand::Rename {
+                json: false,
                 old: "default".to_owned(),
                 new: "api".to_owned(),
+            }
+        );
+    }
+
+    #[test]
+    fn parses_pair_mutation_json_flags() {
+        let pair = Cli::parse_from(["zaphod", "pair", "feature/api", "feature/ui", "--json"]);
+        let init = Cli::parse_from(["zaphod", "init", "feature/ui", "--json"]);
+        let rename = Cli::parse_from(["zaphod", "rename", "--json", "default", "api"]);
+        let unpair = Cli::parse_from(["zaphod", "unpair", "--name", "api", "--json"]);
+
+        assert_eq!(
+            pair.command,
+            CliCommand::Pair {
+                left: "feature/api".to_owned(),
+                right: "feature/ui".to_owned(),
+                name: "default".to_owned(),
+                json: true,
+            }
+        );
+        assert_eq!(
+            init.command,
+            CliCommand::Init {
+                other: "feature/ui".to_owned(),
+                name: "default".to_owned(),
+                json: true,
+            }
+        );
+        assert_eq!(
+            rename.command,
+            CliCommand::Rename {
+                json: true,
+                old: "default".to_owned(),
+                new: "api".to_owned(),
+            }
+        );
+        assert_eq!(
+            unpair.command,
+            CliCommand::Unpair {
+                json: true,
+                name: "api".to_owned(),
             }
         );
     }

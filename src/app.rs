@@ -15,11 +15,16 @@ use std::time::{SystemTime, SystemTimeError, UNIX_EPOCH};
 
 pub fn run(cli: Cli) -> Result<(), AppError> {
     match cli.command {
-        CliCommand::Pair { left, right, name } => pair_branches(name, left, right),
-        CliCommand::Init { other, name } => init_pair(name, other),
+        CliCommand::Pair {
+            left,
+            right,
+            name,
+            json,
+        } => pair_branches(name, left, right, json),
+        CliCommand::Init { other, name, json } => init_pair(name, other, json),
         CliCommand::List { json } => list_pairs(json),
-        CliCommand::Unpair { name } => unpair_branches(&name),
-        CliCommand::Rename { old, new } => rename_pair(&old, &new),
+        CliCommand::Unpair { json, name } => unpair_branches(&name, json),
+        CliCommand::Rename { json, old, new } => rename_pair(&old, &new, json),
         CliCommand::Status { json, all, name } => {
             if all {
                 show_all_statuses(json)
@@ -87,7 +92,7 @@ fn generate_completions(shell: Shell) -> Result<(), AppError> {
     Ok(())
 }
 
-fn pair_branches(name: String, left: String, right: String) -> Result<(), AppError> {
+fn pair_branches(name: String, left: String, right: String, json: bool) -> Result<(), AppError> {
     let repository = GitRepository::discover(".")?;
     ensure_branch_name_is_valid(&repository, &left)?;
     ensure_branch_name_is_valid(&repository, &right)?;
@@ -95,9 +100,18 @@ fn pair_branches(name: String, left: String, right: String) -> Result<(), AppErr
     ensure_branch_exists(&repository, &right)?;
 
     let pair = BranchPair::new(name, left, right)?;
-    let replaced = save_pair(&repository, pair.clone())?;
+    let store = MetadataStore::for_repository(&repository);
+    let previous_pair = save_pair(&store, pair.clone())?;
+    let action = if previous_pair.is_some() {
+        "updated"
+    } else {
+        "created"
+    };
+    let report = PairMutationReport::new(action, &repository, &store, pair.clone(), previous_pair);
 
-    if replaced {
+    if json {
+        println!("{}", serde_json::to_string_pretty(&report)?);
+    } else if report.previous_pair.is_some() {
         println!(
             "Updated pair '{}': {} <-> {}",
             pair.name, pair.left, pair.right
@@ -109,7 +123,7 @@ fn pair_branches(name: String, left: String, right: String) -> Result<(), AppErr
     Ok(())
 }
 
-fn init_pair(name: String, other: String) -> Result<(), AppError> {
+fn init_pair(name: String, other: String, json: bool) -> Result<(), AppError> {
     let repository = GitRepository::discover(".")?;
     let current = repository.current_branch()?;
     ensure_branch_name_is_valid(&repository, &other)?;
@@ -117,9 +131,18 @@ fn init_pair(name: String, other: String) -> Result<(), AppError> {
     ensure_branch_exists(&repository, &other)?;
 
     let pair = BranchPair::new(name, current, other)?;
-    let replaced = save_pair(&repository, pair.clone())?;
+    let store = MetadataStore::for_repository(&repository);
+    let previous_pair = save_pair(&store, pair.clone())?;
+    let action = if previous_pair.is_some() {
+        "updated"
+    } else {
+        "initialized"
+    };
+    let report = PairMutationReport::new(action, &repository, &store, pair.clone(), previous_pair);
 
-    if replaced {
+    if json {
+        println!("{}", serde_json::to_string_pretty(&report)?);
+    } else if report.previous_pair.is_some() {
         println!(
             "Updated pair '{}': {} <-> {}",
             pair.name, pair.left, pair.right
@@ -134,13 +157,12 @@ fn init_pair(name: String, other: String) -> Result<(), AppError> {
     Ok(())
 }
 
-fn save_pair(repository: &GitRepository, pair: BranchPair) -> Result<bool, AppError> {
-    let store = MetadataStore::for_repository(repository);
+fn save_pair(store: &MetadataStore, pair: BranchPair) -> Result<Option<BranchPair>, AppError> {
     let mut pairs = store.load()?;
-    let replaced = pairs.upsert(pair).is_some();
+    let previous_pair = pairs.upsert(pair);
     store.save(&pairs)?;
 
-    Ok(replaced)
+    Ok(previous_pair)
 }
 
 fn list_pairs(json: bool) -> Result<(), AppError> {
@@ -165,7 +187,7 @@ fn list_pairs(json: bool) -> Result<(), AppError> {
     Ok(())
 }
 
-fn unpair_branches(name: &str) -> Result<(), AppError> {
+fn unpair_branches(name: &str, json: bool) -> Result<(), AppError> {
     let repository = GitRepository::discover(".")?;
     let store = MetadataStore::for_repository(&repository);
     let mut pairs = store.load()?;
@@ -173,16 +195,21 @@ fn unpair_branches(name: &str) -> Result<(), AppError> {
         name: name.to_owned(),
     })?;
     store.save(&pairs)?;
+    let report = PairMutationReport::new("removed", &repository, &store, removed.clone(), None);
 
-    println!(
-        "Removed pair '{}': {} <-> {}",
-        removed.name, removed.left, removed.right
-    );
+    if json {
+        println!("{}", serde_json::to_string_pretty(&report)?);
+    } else {
+        println!(
+            "Removed pair '{}': {} <-> {}",
+            removed.name, removed.left, removed.right
+        );
+    }
 
     Ok(())
 }
 
-fn rename_pair(old_name: &str, new_name: &str) -> Result<(), AppError> {
+fn rename_pair(old_name: &str, new_name: &str, json: bool) -> Result<(), AppError> {
     let repository = GitRepository::discover(".")?;
     let store = MetadataStore::for_repository(&repository);
     let mut pairs = store.load()?;
@@ -198,14 +225,25 @@ fn rename_pair(old_name: &str, new_name: &str) -> Result<(), AppError> {
         .ok_or_else(|| AppError::PairNotFound {
             name: old_name.to_owned(),
         })?;
-    let renamed = BranchPair::new(new_name.to_owned(), pair.left, pair.right)?;
+    let renamed = BranchPair::new(new_name.to_owned(), pair.left.clone(), pair.right.clone())?;
     pairs.upsert(renamed.clone());
     store.save(&pairs)?;
-
-    println!(
-        "Renamed pair '{}' to '{}': {} <-> {}",
-        old_name, renamed.name, renamed.left, renamed.right
+    let report = PairMutationReport::new(
+        "renamed",
+        &repository,
+        &store,
+        renamed.clone(),
+        Some(pair.clone()),
     );
+
+    if json {
+        println!("{}", serde_json::to_string_pretty(&report)?);
+    } else {
+        println!(
+            "Renamed pair '{}' to '{}': {} <-> {}",
+            old_name, renamed.name, renamed.left, renamed.right
+        );
+    }
 
     Ok(())
 }
@@ -1697,6 +1735,35 @@ fn format_branch_health(left_exists: bool, right_exists: bool, left: &str, right
 struct StatusContext {
     repository: GitRepository,
     status: PairStatus,
+}
+
+#[derive(Debug, Serialize)]
+struct PairMutationReport {
+    ok: bool,
+    action: &'static str,
+    repository_root: String,
+    pairs_path: String,
+    pair: BranchPair,
+    previous_pair: Option<BranchPair>,
+}
+
+impl PairMutationReport {
+    fn new(
+        action: &'static str,
+        repository: &GitRepository,
+        store: &MetadataStore,
+        pair: BranchPair,
+        previous_pair: Option<BranchPair>,
+    ) -> Self {
+        Self {
+            ok: true,
+            action,
+            repository_root: repository.root().display().to_string(),
+            pairs_path: store.path().display().to_string(),
+            pair,
+            previous_pair,
+        }
+    }
 }
 
 #[derive(Debug, Serialize)]
