@@ -7,6 +7,8 @@ and this project uses semantic versioning for published releases.
 
 ## Unreleased
 
+## 0.1.11 - 2026-05-30
+
 ### Added
 
 - `doctor` now reports agent claims that reference missing pairs, branches that
