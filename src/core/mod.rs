@@ -1,3 +1,5 @@
+pub const METADATA_SCHEMA_VERSION: u32 = 1;
+
 mod claim;
 mod pair;
 mod status;

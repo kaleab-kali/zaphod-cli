@@ -1,3 +1,4 @@
+use super::METADATA_SCHEMA_VERSION;
 use serde::{Deserialize, Serialize};
 use std::error::Error;
 use std::fmt::{self, Display, Formatter};
@@ -31,14 +32,29 @@ impl AgentClaim {
     }
 }
 
-#[derive(Debug, Default, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct AgentClaims {
+    #[serde(default = "metadata_schema_version")]
+    schema_version: u32,
     #[serde(default)]
     claims: Vec<AgentClaim>,
 }
 
+impl Default for AgentClaims {
+    fn default() -> Self {
+        Self {
+            schema_version: METADATA_SCHEMA_VERSION,
+            claims: Vec::new(),
+        }
+    }
+}
+
 impl AgentClaims {
+    pub fn schema_version(&self) -> u32 {
+        self.schema_version
+    }
+
     pub fn claims(&self) -> &[AgentClaim] {
         &self.claims
     }
@@ -79,6 +95,10 @@ impl AgentClaims {
 
         Some(self.claims.remove(index))
     }
+}
+
+fn metadata_schema_version() -> u32 {
+    METADATA_SCHEMA_VERSION
 }
 
 #[derive(Debug, PartialEq, Eq)]
@@ -129,6 +149,7 @@ fn validate_non_empty(field: &'static str, value: &str) -> Result<(), ClaimError
 #[cfg(test)]
 mod tests {
     use super::{AgentClaim, AgentClaims, ClaimError};
+    use crate::core::METADATA_SCHEMA_VERSION;
 
     #[test]
     fn agent_name_allows_simple_safe_characters() {
@@ -159,6 +180,13 @@ mod tests {
                 agent: "bad/name".to_owned()
             }
         );
+    }
+
+    #[test]
+    fn collection_defaults_to_current_schema_version() {
+        let claims = AgentClaims::default();
+
+        assert_eq!(claims.schema_version(), METADATA_SCHEMA_VERSION);
     }
 
     #[test]

@@ -203,6 +203,38 @@ fn doctor_reports_corrupt_claims_metadata() {
 }
 
 #[test]
+fn doctor_reports_unsupported_claims_schema_version() {
+    let dir = TestDir::new("zaphod-cli-doctor");
+    init_repo_with_pair_branches(dir.path());
+    let pair = zaphod(dir.path(), ["pair", "feature/api", "feature/ui"]);
+    assert_success(&pair);
+    let metadata_dir = dir.git_dir().join("zaphod");
+    fs::create_dir_all(&metadata_dir).expect("create zaphod metadata directory");
+    fs::write(
+        metadata_dir.join("claims.toml"),
+        r#"schema_version = 2
+
+[[claims]]
+agent = "codex"
+pair = "default"
+branch = "feature/api"
+created_at_unix = 42
+"#,
+    )
+    .expect("write unsupported claims metadata");
+
+    let output = zaphod(dir.path(), ["doctor"]);
+
+    assert!(!output.status.success());
+    assert_eq!(output.status.code(), Some(4));
+    assert_stdout_contains(
+        &output,
+        "Claims: error (unsupported metadata schema version 2",
+    );
+    assert_stderr_contains(&output, "doctor found problems");
+}
+
+#[test]
 fn doctor_reports_missing_pair_branch() {
     let dir = TestDir::new("zaphod-cli-doctor");
     init_repo_with_pair_branches(dir.path());
@@ -261,6 +293,35 @@ fn doctor_reports_corrupt_metadata() {
     assert!(!output.status.success());
     assert_eq!(output.status.code(), Some(4));
     assert_stdout_contains(&output, "Metadata: error (failed to parse metadata file");
+    assert_stderr_contains(&output, "doctor found problems");
+}
+
+#[test]
+fn doctor_reports_unsupported_pair_schema_version() {
+    let dir = TestDir::new("zaphod-cli-doctor");
+    init_repo_with_pair_branches(dir.path());
+    let metadata_dir = dir.git_dir().join("zaphod");
+    fs::create_dir_all(&metadata_dir).expect("create metadata directory");
+    fs::write(
+        metadata_dir.join("pairs.toml"),
+        r#"schema_version = 2
+
+[[pairs]]
+name = "default"
+left = "feature/api"
+right = "feature/ui"
+"#,
+    )
+    .expect("write unsupported metadata");
+
+    let output = zaphod(dir.path(), ["doctor"]);
+
+    assert!(!output.status.success());
+    assert_eq!(output.status.code(), Some(4));
+    assert_stdout_contains(
+        &output,
+        "Metadata: error (unsupported metadata schema version 2",
+    );
     assert_stderr_contains(&output, "doctor found problems");
 }
 
