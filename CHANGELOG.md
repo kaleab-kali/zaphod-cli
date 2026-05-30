@@ -7,6 +7,8 @@ and this project uses semantic versioning for published releases.
 
 ## Unreleased
 
+## 0.1.12 - 2026-05-30
+
 ### Added
 
 - `prune-claims --orphaned` for dry-run-by-default cleanup of claim metadata
