@@ -171,7 +171,7 @@ pub enum CliCommand {
         stale_after: Option<String>,
     },
 
-    /// Prune stale agent session claims. Defaults to dry-run.
+    /// Prune stale or orphaned agent session claims. Defaults to dry-run.
     PruneClaims {
         /// Emit machine-readable JSON.
         #[arg(long)]
@@ -190,10 +190,14 @@ pub enum CliCommand {
         branch: Option<String>,
 
         /// Select claims older than this duration, for example 30m, 2h, or 1d.
-        #[arg(long)]
-        stale_after: String,
+        #[arg(long, required_unless_present = "orphaned")]
+        stale_after: Option<String>,
 
-        /// Remove matching stale claims. Without this flag, the command is a dry-run.
+        /// Select claims that reference missing pairs or branches.
+        #[arg(long)]
+        orphaned: bool,
+
+        /// Remove matching claims. Without this flag, the command is a dry-run.
         #[arg(long)]
         apply: bool,
     },
@@ -623,9 +627,39 @@ mod tests {
                 agent: Some("codex".to_owned()),
                 pair: Some("api".to_owned()),
                 branch: Some("feature/api".to_owned()),
-                stale_after: "2h".to_owned(),
+                stale_after: Some("2h".to_owned()),
+                orphaned: false,
                 apply: true,
             }
+        );
+    }
+
+    #[test]
+    fn parses_prune_claims_orphaned_selector() {
+        let cli = Cli::parse_from(["zaphod", "prune-claims", "--json", "--orphaned"]);
+
+        assert_eq!(
+            cli.command,
+            CliCommand::PruneClaims {
+                json: true,
+                agent: None,
+                pair: None,
+                branch: None,
+                stale_after: None,
+                orphaned: true,
+                apply: false,
+            }
+        );
+    }
+
+    #[test]
+    fn prune_claims_requires_a_selector() {
+        let error = Cli::try_parse_from(["zaphod", "prune-claims"])
+            .expect_err("reject prune without stale or orphaned selector");
+
+        assert_eq!(
+            error.kind(),
+            clap::error::ErrorKind::MissingRequiredArgument
         );
     }
 

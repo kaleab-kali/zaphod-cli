@@ -96,6 +96,8 @@ zaphod heartbeat --agent codex --pair search --json
 zaphod claims --pair search --stale-after 2h --json
 zaphod prune-claims --pair search --stale-after 2h --json
 zaphod prune-claims --pair search --stale-after 2h --apply
+zaphod prune-claims --orphaned --json
+zaphod prune-claims --orphaned --apply
 zaphod unclaim --agent codex --pair search
 zaphod unclaim --agent codex --pair search --branch feature/api
 ```
@@ -423,18 +425,22 @@ positive number followed by `s`, `m`, `h`, or `d`.
 
 ### `zaphod prune-claims`
 
-Preview or remove stale agent session claims:
+Preview or remove stale or orphaned agent session claims:
 
 ```sh
 zaphod prune-claims --stale-after 2h
 zaphod prune-claims --pair api --stale-after 2h --json
 zaphod prune-claims --pair api --stale-after 2h --apply
+zaphod prune-claims --orphaned --json
+zaphod prune-claims --orphaned --apply
 ```
 
 `prune-claims` defaults to dry-run mode and does not change metadata unless
 `--apply` is present. Use `--agent`, `--pair`, and `--branch` to narrow the
-cleanup scope. The command only edits `.git/zaphod/claims.toml`; it never
-switches branches, deletes files, or changes Git history.
+cleanup scope. Use `--orphaned` to match claims for missing pairs, branches
+outside their configured pair, or local branches that no longer exist. The
+command only edits `.git/zaphod/claims.toml`; it never switches branches,
+deletes files, or changes Git history.
 
 ### `zaphod unclaim`
 
