@@ -22,7 +22,7 @@ Zaphod is in early development. The current `0.1.x` CLI can:
 - Claim, heartbeat, and release a pair/branch for an agent session.
 - Emit a handoff snapshot for agent-to-agent continuation.
 - Refuse unsafe switches when the worktree is dirty or Git is mid-operation.
-- Emit JSON status for scripts.
+- Emit JSON status and switch results for scripts.
 - Diagnose repository, metadata, branch-pair, and claim health in text or JSON.
 - Generate shell completions.
 
@@ -65,8 +65,8 @@ zaphod heartbeat --agent codex --pair api --json
 zaphod assert --pair api --side left --json
 zaphod handoff --agent codex --stale-after 2h --json
 zaphod status --json
+zaphod switch --dry-run --json
 zaphod doctor --json
-zaphod switch --dry-run
 ```
 
 This lets an agent check branch, worktree, merge, rebase, and pair state before
@@ -546,6 +546,17 @@ zaphod switch --dry-run
 ```
 
 Dry-run mode applies the same safety checks as a real switch.
+
+For scripts, use JSON output:
+
+```sh
+zaphod switch --json
+zaphod switch --dry-run --json
+```
+
+When switching is refused, JSON output still reports the pair, current branch,
+target branch, worktree state, Git state, and refusal reasons before exiting
+with the same safety-refusal code.
 
 ### `zaphod list`
 

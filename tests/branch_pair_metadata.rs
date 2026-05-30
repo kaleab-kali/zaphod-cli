@@ -770,6 +770,30 @@ fn switch_moves_to_other_branch_when_clean() {
 }
 
 #[test]
+fn switch_json_reports_successful_switch() {
+    let dir = TestDir::new("zaphod-cli-metadata");
+    init_repo_with_pair_branches(dir.path());
+    let pair = zaphod(dir.path(), ["pair", "feature/api", "feature/ui"]);
+    assert_success(&pair);
+
+    let output = zaphod(dir.path(), ["switch", "--json"]);
+
+    assert_success(&output);
+    let report: serde_json::Value = serde_json::from_slice(&output.stdout).expect("switch json");
+    assert_eq!(report["ok"], true);
+    assert_eq!(report["dry_run"], false);
+    assert_eq!(report["switched"], true);
+    assert_eq!(report["pair"], "default");
+    assert_eq!(report["current"], "feature/api");
+    assert_eq!(report["target"], "feature/ui");
+    assert_eq!(report["worktree"], "clean");
+    assert_eq!(report["git_state"], "ready");
+    assert_eq!(report["refusal_reasons"], json!([]));
+    assert!(report["repository_root"].as_str().is_some());
+    assert_eq!(current_branch(dir.path()), "feature/ui");
+}
+
+#[test]
 fn switch_dry_run_reports_target_without_switching() {
     let dir = TestDir::new("zaphod-cli-metadata");
     init_repo_with_pair_branches(dir.path());
@@ -787,6 +811,26 @@ fn switch_dry_run_reports_target_without_switching() {
 }
 
 #[test]
+fn switch_json_dry_run_reports_target_without_switching() {
+    let dir = TestDir::new("zaphod-cli-metadata");
+    init_repo_with_pair_branches(dir.path());
+    let pair = zaphod(dir.path(), ["pair", "feature/api", "feature/ui"]);
+    assert_success(&pair);
+
+    let output = zaphod(dir.path(), ["switch", "--dry-run", "--json"]);
+
+    assert_success(&output);
+    let report: serde_json::Value = serde_json::from_slice(&output.stdout).expect("switch json");
+    assert_eq!(report["ok"], true);
+    assert_eq!(report["dry_run"], true);
+    assert_eq!(report["switched"], false);
+    assert_eq!(report["current"], "feature/api");
+    assert_eq!(report["target"], "feature/ui");
+    assert_eq!(report["refusal_reasons"], json!([]));
+    assert_eq!(current_branch(dir.path()), "feature/api");
+}
+
+#[test]
 fn switch_refuses_dirty_worktree() {
     let dir = TestDir::new("zaphod-cli-metadata");
     init_repo_with_pair_branches(dir.path());
@@ -797,6 +841,35 @@ fn switch_refuses_dirty_worktree() {
     let output = zaphod(dir.path(), ["switch"]);
 
     assert!(!output.status.success());
+    assert_stderr_contains(
+        &output,
+        "refusing to switch: worktree has uncommitted changes",
+    );
+    assert_eq!(current_branch(dir.path()), "feature/api");
+}
+
+#[test]
+fn switch_json_reports_dirty_refusal() {
+    let dir = TestDir::new("zaphod-cli-metadata");
+    init_repo_with_pair_branches(dir.path());
+    let pair = zaphod(dir.path(), ["pair", "feature/api", "feature/ui"]);
+    assert_success(&pair);
+    fs::write(dir.path().join("dirty.txt"), "local work\n").expect("write dirty file");
+
+    let output = zaphod(dir.path(), ["switch", "--json"]);
+
+    assert!(!output.status.success());
+    assert_eq!(output.status.code(), Some(3));
+    let report: serde_json::Value = serde_json::from_slice(&output.stdout).expect("switch json");
+    assert_eq!(report["ok"], false);
+    assert_eq!(report["dry_run"], false);
+    assert_eq!(report["switched"], false);
+    assert_eq!(report["pair"], "default");
+    assert_eq!(report["current"], "feature/api");
+    assert_eq!(report["target"], "feature/ui");
+    assert_eq!(report["worktree"], "dirty");
+    assert_eq!(report["git_state"], "ready");
+    assert_eq!(report["refusal_reasons"], json!(["dirty_worktree"]));
     assert_stderr_contains(
         &output,
         "refusing to switch: worktree has uncommitted changes",

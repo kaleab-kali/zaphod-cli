@@ -27,7 +27,11 @@ pub fn run(cli: Cli) -> Result<(), AppError> {
                 show_status(&name, json)
             }
         }
-        CliCommand::Switch { dry_run, name } => switch_branches(&name, dry_run),
+        CliCommand::Switch {
+            json,
+            dry_run,
+            name,
+        } => switch_branches(&name, json, dry_run),
         CliCommand::Preflight {
             json,
             name,
@@ -260,28 +264,42 @@ fn show_all_statuses(json: bool) -> Result<(), AppError> {
     Ok(())
 }
 
-fn switch_branches(name: &str, dry_run: bool) -> Result<(), AppError> {
+fn switch_branches(name: &str, json: bool, dry_run: bool) -> Result<(), AppError> {
     let context = load_status_context(name)?;
+    let mut report = SwitchReport::from_status_context(&context, dry_run);
 
     if !context.status.switch_allowed {
+        if json {
+            println!("{}", serde_json::to_string_pretty(&report)?);
+        }
         return Err(AppError::SwitchRefused {
             reasons: context.status.refusal_reasons,
         });
     }
 
     if dry_run {
-        println!(
-            "Would switch pair '{}': {} -> {}",
-            context.status.pair, context.status.current, context.status.other
-        );
+        if json {
+            println!("{}", serde_json::to_string_pretty(&report)?);
+        } else {
+            println!(
+                "Would switch pair '{}': {} -> {}",
+                context.status.pair, context.status.current, context.status.other
+            );
+        }
         return Ok(());
     }
 
     context.repository.switch_branch(&context.status.other)?;
-    println!(
-        "Switched pair '{}': {} -> {}",
-        context.status.pair, context.status.current, context.status.other
-    );
+    report.ok = true;
+    report.switched = true;
+    if json {
+        println!("{}", serde_json::to_string_pretty(&report)?);
+    } else {
+        println!(
+            "Switched pair '{}': {} -> {}",
+            context.status.pair, context.status.current, context.status.other
+        );
+    }
 
     Ok(())
 }
@@ -1679,6 +1697,37 @@ fn format_branch_health(left_exists: bool, right_exists: bool, left: &str, right
 struct StatusContext {
     repository: GitRepository,
     status: PairStatus,
+}
+
+#[derive(Debug, Serialize)]
+struct SwitchReport {
+    ok: bool,
+    dry_run: bool,
+    switched: bool,
+    pair: String,
+    repository_root: String,
+    current: String,
+    target: String,
+    worktree: WorktreeStatus,
+    git_state: GitState,
+    refusal_reasons: Vec<RefusalReason>,
+}
+
+impl SwitchReport {
+    fn from_status_context(context: &StatusContext, dry_run: bool) -> Self {
+        Self {
+            ok: context.status.switch_allowed,
+            dry_run,
+            switched: false,
+            pair: context.status.pair.clone(),
+            repository_root: context.repository.root().display().to_string(),
+            current: context.status.current.clone(),
+            target: context.status.other.clone(),
+            worktree: context.status.worktree,
+            git_state: context.status.git_state,
+            refusal_reasons: context.status.refusal_reasons.clone(),
+        }
+    }
 }
 
 #[derive(Debug, Serialize)]
