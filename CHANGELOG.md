@@ -7,6 +7,10 @@ and this project uses semantic versioning for published releases.
 
 ## Unreleased
 
+### Added
+
+- Explicit schema-version validation for Zaphod pair and claim metadata.
+
 ## 0.1.12 - 2026-05-30
 
 ### Added

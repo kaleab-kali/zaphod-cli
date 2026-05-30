@@ -1,3 +1,4 @@
+use super::METADATA_SCHEMA_VERSION;
 use serde::{Deserialize, Serialize};
 use std::error::Error;
 use std::fmt::{self, Display, Formatter};
@@ -34,14 +35,29 @@ impl BranchPair {
     }
 }
 
-#[derive(Debug, Default, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct BranchPairs {
+    #[serde(default = "metadata_schema_version")]
+    schema_version: u32,
     #[serde(default)]
     pairs: Vec<BranchPair>,
 }
 
+impl Default for BranchPairs {
+    fn default() -> Self {
+        Self {
+            schema_version: METADATA_SCHEMA_VERSION,
+            pairs: Vec::new(),
+        }
+    }
+}
+
 impl BranchPairs {
+    pub fn schema_version(&self) -> u32 {
+        self.schema_version
+    }
+
     pub fn pairs(&self) -> &[BranchPair] {
         &self.pairs
     }
@@ -67,6 +83,10 @@ impl BranchPairs {
 
         Some(self.pairs.remove(index))
     }
+}
+
+fn metadata_schema_version() -> u32 {
+    METADATA_SCHEMA_VERSION
 }
 
 #[derive(Debug, PartialEq, Eq)]
@@ -123,6 +143,7 @@ fn validate_branch_name(field: &'static str, name: &str) -> Result<(), PairError
 #[cfg(test)]
 mod tests {
     use super::{BranchPair, BranchPairs, PairError};
+    use crate::core::METADATA_SCHEMA_VERSION;
 
     #[test]
     fn pair_requires_different_branches() {
@@ -166,6 +187,13 @@ mod tests {
         assert_eq!(previous.right, "feature/a");
         assert_eq!(pairs.pairs().len(), 1);
         assert_eq!(pairs.get("default").expect("pair").right, "feature/b");
+    }
+
+    #[test]
+    fn collection_defaults_to_current_schema_version() {
+        let pairs = BranchPairs::default();
+
+        assert_eq!(pairs.schema_version(), METADATA_SCHEMA_VERSION);
     }
 
     #[test]

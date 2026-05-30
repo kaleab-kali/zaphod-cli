@@ -1,4 +1,4 @@
-use crate::core::{AgentClaims, BranchPairs};
+use crate::core::{AgentClaims, BranchPairs, METADATA_SCHEMA_VERSION};
 use crate::git::GitRepository;
 use atomic_write_file::AtomicWriteFile;
 use std::error::Error;
@@ -38,13 +38,18 @@ impl MetadataStore {
             source,
         })?;
 
-        toml::from_str(&contents).map_err(|source| MetadataError::Decode {
-            path: self.path.clone(),
-            source,
-        })
+        let pairs: BranchPairs =
+            toml::from_str(&contents).map_err(|source| MetadataError::Decode {
+                path: self.path.clone(),
+                source,
+            })?;
+        validate_schema_version(self.path(), pairs.schema_version())?;
+
+        Ok(pairs)
     }
 
     pub fn save(&self, pairs: &BranchPairs) -> Result<(), MetadataError> {
+        validate_schema_version(self.path(), pairs.schema_version())?;
         let parent = self
             .path
             .parent()
@@ -106,13 +111,18 @@ impl ClaimStore {
             source,
         })?;
 
-        toml::from_str(&contents).map_err(|source| MetadataError::Decode {
-            path: self.path.clone(),
-            source,
-        })
+        let claims: AgentClaims =
+            toml::from_str(&contents).map_err(|source| MetadataError::Decode {
+                path: self.path.clone(),
+                source,
+            })?;
+        validate_schema_version(self.path(), claims.schema_version())?;
+
+        Ok(claims)
     }
 
     pub fn save(&self, claims: &AgentClaims) -> Result<(), MetadataError> {
+        validate_schema_version(self.path(), claims.schema_version())?;
         let parent = self
             .path
             .parent()
@@ -163,6 +173,11 @@ pub enum MetadataError {
         path: PathBuf,
         source: std::io::Error,
     },
+    UnsupportedSchemaVersion {
+        path: PathBuf,
+        version: u32,
+        supported: u32,
+    },
     Write {
         path: PathBuf,
         source: std::io::Error,
@@ -197,6 +212,15 @@ impl Display for MetadataError {
             Self::Read { path, .. } => {
                 write!(formatter, "failed to read metadata file {}", path.display())
             }
+            Self::UnsupportedSchemaVersion {
+                path,
+                version,
+                supported,
+            } => write!(
+                formatter,
+                "unsupported metadata schema version {version} in {}; supported version is {supported}",
+                path.display()
+            ),
             Self::Write { path, .. } => {
                 write!(
                     formatter,
@@ -216,15 +240,27 @@ impl Error for MetadataError {
             Self::Encode { source } => Some(source),
             Self::Read { source, .. } => Some(source),
             Self::Write { source, .. } => Some(source),
-            Self::MissingParent { .. } => None,
+            Self::MissingParent { .. } | Self::UnsupportedSchemaVersion { .. } => None,
         }
     }
 }
 
+fn validate_schema_version(path: &Path, version: u32) -> Result<(), MetadataError> {
+    if version == METADATA_SCHEMA_VERSION {
+        return Ok(());
+    }
+
+    Err(MetadataError::UnsupportedSchemaVersion {
+        path: path.to_path_buf(),
+        version,
+        supported: METADATA_SCHEMA_VERSION,
+    })
+}
+
 #[cfg(test)]
 mod tests {
-    use super::{ClaimStore, MetadataStore};
-    use crate::core::{AgentClaim, AgentClaims, BranchPair, BranchPairs};
+    use super::{ClaimStore, MetadataError, MetadataStore};
+    use crate::core::{AgentClaim, AgentClaims, BranchPair, BranchPairs, METADATA_SCHEMA_VERSION};
     use std::fs;
     use std::path::{Path, PathBuf};
     use std::sync::atomic::{AtomicUsize, Ordering};
@@ -264,6 +300,7 @@ mod tests {
         let pairs = store.load().expect("load pairs");
 
         assert!(pairs.is_empty());
+        assert_eq!(pairs.schema_version(), METADATA_SCHEMA_VERSION);
     }
 
     #[test]
@@ -284,6 +321,61 @@ mod tests {
 
         let loaded = store.load().expect("load pairs");
         assert_eq!(loaded, pairs);
+        let contents = fs::read_to_string(store.path()).expect("read pairs metadata");
+        assert!(contents.contains("schema_version = 1"));
+    }
+
+    #[test]
+    fn loads_legacy_pairs_without_schema_version() {
+        let dir = TestDir::new();
+        let store = MetadataStore::at_path(dir.path().join("zaphod").join("pairs.toml"));
+        fs::create_dir_all(store.path().parent().expect("metadata parent"))
+            .expect("create metadata directory");
+        fs::write(
+            store.path(),
+            r#"[[pairs]]
+name = "default"
+left = "feature/api"
+right = "feature/ui"
+"#,
+        )
+        .expect("write legacy metadata");
+
+        let loaded = store.load().expect("load legacy pairs");
+
+        assert_eq!(loaded.schema_version(), METADATA_SCHEMA_VERSION);
+        assert_eq!(loaded.pairs().len(), 1);
+        assert_eq!(loaded.pairs()[0].name, "default");
+    }
+
+    #[test]
+    fn rejects_unsupported_pairs_schema_version() {
+        let dir = TestDir::new();
+        let store = MetadataStore::at_path(dir.path().join("zaphod").join("pairs.toml"));
+        fs::create_dir_all(store.path().parent().expect("metadata parent"))
+            .expect("create metadata directory");
+        fs::write(
+            store.path(),
+            r#"schema_version = 2
+
+[[pairs]]
+name = "default"
+left = "feature/api"
+right = "feature/ui"
+"#,
+        )
+        .expect("write future metadata");
+
+        let error = store.load().expect_err("reject unsupported schema");
+
+        assert!(matches!(
+            error,
+            MetadataError::UnsupportedSchemaVersion {
+                version: 2,
+                supported: METADATA_SCHEMA_VERSION,
+                ..
+            }
+        ));
     }
 
     #[test]
@@ -324,6 +416,7 @@ mod tests {
         let claims = store.load().expect("load claims");
 
         assert!(claims.is_empty());
+        assert_eq!(claims.schema_version(), METADATA_SCHEMA_VERSION);
     }
 
     #[test]
@@ -345,5 +438,62 @@ mod tests {
 
         let loaded = store.load().expect("load claims");
         assert_eq!(loaded, claims);
+        let contents = fs::read_to_string(store.path()).expect("read claims metadata");
+        assert!(contents.contains("schema_version = 1"));
+    }
+
+    #[test]
+    fn loads_legacy_claims_without_schema_version() {
+        let dir = TestDir::new();
+        let store = ClaimStore::at_path(dir.path().join("zaphod").join("claims.toml"));
+        fs::create_dir_all(store.path().parent().expect("metadata parent"))
+            .expect("create metadata directory");
+        fs::write(
+            store.path(),
+            r#"[[claims]]
+agent = "codex"
+pair = "default"
+branch = "feature/api"
+created_at_unix = 42
+"#,
+        )
+        .expect("write legacy claims");
+
+        let loaded = store.load().expect("load legacy claims");
+
+        assert_eq!(loaded.schema_version(), METADATA_SCHEMA_VERSION);
+        assert_eq!(loaded.claims().len(), 1);
+        assert_eq!(loaded.claims()[0].agent, "codex");
+    }
+
+    #[test]
+    fn rejects_unsupported_claims_schema_version() {
+        let dir = TestDir::new();
+        let store = ClaimStore::at_path(dir.path().join("zaphod").join("claims.toml"));
+        fs::create_dir_all(store.path().parent().expect("metadata parent"))
+            .expect("create metadata directory");
+        fs::write(
+            store.path(),
+            r#"schema_version = 2
+
+[[claims]]
+agent = "codex"
+pair = "default"
+branch = "feature/api"
+created_at_unix = 42
+"#,
+        )
+        .expect("write future claims");
+
+        let error = store.load().expect_err("reject unsupported schema");
+
+        assert!(matches!(
+            error,
+            MetadataError::UnsupportedSchemaVersion {
+                version: 2,
+                supported: METADATA_SCHEMA_VERSION,
+                ..
+            }
+        ));
     }
 }

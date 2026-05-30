@@ -703,14 +703,20 @@ Switched pair 'default': feature/api -> feature/ui
 
 ## Metadata
 
-Zaphod stores branch pair data inside the current repository under `.git/zaphod`.
+Zaphod stores branch-pair and agent-claim data inside the current repository
+under `.git/zaphod`.
 
-This keeps pair metadata local to the repository and avoids changing global Git
+This keeps Zaphod state local to the repository and avoids changing global Git
 configuration. The metadata format is TOML so it stays readable and easy to
 debug.
 
+Metadata files include a top-level `schema_version`. Files without this field
+are treated as schema version 1 for compatibility with early releases. Files
+with a newer unsupported schema version are refused with a clear error instead
+of being partially interpreted.
+
 Metadata saves use atomic file replacement so interrupted writes do not leave
-`.git/zaphod/pairs.toml` partially written.
+`.git/zaphod/pairs.toml` or `.git/zaphod/claims.toml` partially written.
 
 ## Development
 
