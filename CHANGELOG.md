@@ -7,6 +7,11 @@ and this project uses semantic versioning for published releases.
 
 ## Unreleased
 
+### Added
+
+- `prune-claims --orphaned` for dry-run-by-default cleanup of claim metadata
+  that references removed pairs or unavailable branches.
+
 ## 0.1.11 - 2026-05-30
 
 ### Added

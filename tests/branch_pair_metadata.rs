@@ -673,6 +673,91 @@ created_at_unix = 4102444800
 }
 
 #[test]
+fn prune_claims_dry_runs_and_applies_orphaned_cleanup() {
+    let dir = TestDir::new("zaphod-cli-metadata");
+    init_repo_with_pair_branches(dir.path());
+    let pair = zaphod(dir.path(), ["pair", "feature/api", "feature/ui"]);
+    assert_success(&pair);
+    git(dir.path(), ["branch", "-D", "feature/ui"]);
+    let metadata_dir = dir.git_dir().join("zaphod");
+    fs::create_dir_all(&metadata_dir).expect("create zaphod metadata directory");
+    let claims_path = metadata_dir.join("claims.toml");
+    fs::write(
+        &claims_path,
+        r#"[[claims]]
+agent = "missing-pair"
+pair = "removed"
+branch = "feature/api"
+created_at_unix = 1
+
+[[claims]]
+agent = "wrong-side"
+pair = "default"
+branch = "main"
+created_at_unix = 2
+
+[[claims]]
+agent = "missing-branch"
+pair = "default"
+branch = "feature/ui"
+created_at_unix = 3
+
+[[claims]]
+agent = "valid-agent"
+pair = "default"
+branch = "feature/api"
+created_at_unix = 4
+"#,
+    )
+    .expect("write claims metadata");
+
+    let dry_run = zaphod(dir.path(), ["prune-claims", "--json", "--orphaned"]);
+
+    assert_success(&dry_run);
+    let report: serde_json::Value =
+        serde_json::from_slice(&dry_run.stdout).expect("prune orphaned dry-run json");
+    assert_eq!(report["applied"], false);
+    assert_eq!(report["orphaned"], true);
+    assert!(report["filters"]["stale_after_seconds"].is_null());
+    assert_eq!(report["pruned_claims"].as_array().expect("claims").len(), 3);
+    assert_eq!(
+        report["pruned_claim_issues"]
+            .as_array()
+            .expect("claim issues")
+            .len(),
+        3
+    );
+    assert_eq!(report["pruned_claim_issues"][0]["reason"], "missing_pair");
+    assert_eq!(
+        report["pruned_claim_issues"][1]["reason"],
+        "branch_not_in_pair"
+    );
+    assert_eq!(report["pruned_claim_issues"][2]["reason"], "missing_branch");
+    assert_eq!(report["remaining_claim_count"], 4);
+    let metadata = fs::read_to_string(&claims_path).expect("read claims metadata");
+    assert!(metadata.contains("missing-pair"));
+
+    let apply = zaphod(
+        dir.path(),
+        ["prune-claims", "--json", "--orphaned", "--apply"],
+    );
+
+    assert_success(&apply);
+    let report: serde_json::Value =
+        serde_json::from_slice(&apply.stdout).expect("prune orphaned apply json");
+    assert_eq!(report["applied"], true);
+    assert_eq!(report["pruned_claims"].as_array().expect("claims").len(), 3);
+    assert_eq!(report["remaining_claim_count"], 1);
+
+    let claims = zaphod(dir.path(), ["claims", "--json"]);
+    assert_success(&claims);
+    let report: serde_json::Value = serde_json::from_slice(&claims.stdout).expect("claims json");
+    assert_eq!(report["claims"].as_array().expect("claims").len(), 1);
+    assert_eq!(report["claims"][0]["agent"], "valid-agent");
+    assert_eq!(report["claims"][0]["branch"], "feature/api");
+}
+
+#[test]
 fn handoff_json_reports_pair_claims_and_agent_readiness() {
     let dir = TestDir::new("zaphod-cli-metadata");
     init_repo_with_pair_branches(dir.path());
