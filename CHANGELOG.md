@@ -7,6 +7,11 @@ and this project uses semantic versioning for published releases.
 
 ## Unreleased
 
+### Added
+
+- `doctor` now reports agent claims that reference missing pairs, branches that
+  are no longer part of their pair, or local branches that no longer exist.
+
 ## 0.1.10 - 2026-05-30
 
 ### Added
