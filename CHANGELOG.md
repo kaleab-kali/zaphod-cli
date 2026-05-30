@@ -7,6 +7,11 @@ and this project intends to follow semantic versioning once releases begin.
 
 ## Unreleased
 
+### Added
+
+- `switch --json` for machine-readable switch success, dry-run, and safety
+  refusal reports.
+
 ## 0.1.8 - 2026-05-30
 
 ### Added

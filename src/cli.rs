@@ -59,6 +59,10 @@ pub enum CliCommand {
 
     /// Switch to the other branch in a pair.
     Switch {
+        /// Emit machine-readable JSON.
+        #[arg(long)]
+        json: bool,
+
         /// Show the switch target without changing branches.
         #[arg(long)]
         dry_run: bool,
@@ -387,6 +391,7 @@ mod tests {
         assert_eq!(
             cli.command,
             CliCommand::Switch {
+                json: false,
                 dry_run: false,
                 name: "review".to_owned(),
             }
@@ -395,11 +400,12 @@ mod tests {
 
     #[test]
     fn parses_switch_dry_run_flag() {
-        let cli = Cli::parse_from(["zaphod", "switch", "--dry-run"]);
+        let cli = Cli::parse_from(["zaphod", "switch", "--dry-run", "--json"]);
 
         assert_eq!(
             cli.command,
             CliCommand::Switch {
+                json: true,
                 dry_run: true,
                 name: "default".to_owned(),
             }
