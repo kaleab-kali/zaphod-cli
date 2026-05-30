@@ -110,6 +110,81 @@ created_at_unix = 4102444800
 }
 
 #[test]
+fn doctor_reports_claims_that_no_longer_match_pairs_or_branches() {
+    let dir = TestDir::new("zaphod-cli-doctor");
+    init_repo_with_pair_branches(dir.path());
+    let pair = zaphod(dir.path(), ["pair", "feature/api", "feature/ui"]);
+    assert_success(&pair);
+    git(dir.path(), ["branch", "-D", "feature/ui"]);
+    let metadata_dir = dir.git_dir().join("zaphod");
+    fs::create_dir_all(&metadata_dir).expect("create zaphod metadata directory");
+    fs::write(
+        metadata_dir.join("claims.toml"),
+        r#"[[claims]]
+agent = "missing-pair"
+pair = "removed"
+branch = "feature/api"
+created_at_unix = 1
+
+[[claims]]
+agent = "wrong-side"
+pair = "default"
+branch = "main"
+created_at_unix = 2
+
+[[claims]]
+agent = "missing-branch"
+pair = "default"
+branch = "feature/ui"
+created_at_unix = 3
+"#,
+    )
+    .expect("write orphaned claims metadata");
+
+    let output = zaphod(dir.path(), ["doctor"]);
+
+    assert!(!output.status.success());
+    assert_eq!(output.status.code(), Some(4));
+    assert_stdout_contains(&output, "Claims: problems (3 claim(s), ");
+    assert_stdout_contains(&output, "Claim issues: 3");
+    assert_stdout_contains(
+        &output,
+        "- missing-pair: removed on feature/api [pair 'removed' is not configured]",
+    );
+    assert_stdout_contains(
+        &output,
+        "- wrong-side: default on main [branch 'main' is not part of pair 'default']",
+    );
+    assert_stdout_contains(
+        &output,
+        "- missing-branch: default on feature/ui [branch 'feature/ui' was not found]",
+    );
+    assert_stderr_contains(&output, "doctor found problems");
+
+    let output = zaphod(dir.path(), ["doctor", "--json"]);
+
+    assert!(!output.status.success());
+    assert_eq!(output.status.code(), Some(4));
+    let report: serde_json::Value = serde_json::from_slice(&output.stdout).expect("doctor json");
+    assert_eq!(report["healthy"], false);
+    assert_eq!(report["claims"]["ok"], false);
+    assert_eq!(report["claims"]["claim_count"], 3);
+    assert_eq!(report["claims"]["claim_issue_count"], 3);
+    assert_eq!(
+        report["claims"]["claim_issues"][0]["reason"],
+        "missing_pair"
+    );
+    assert_eq!(
+        report["claims"]["claim_issues"][1]["reason"],
+        "branch_not_in_pair"
+    );
+    assert_eq!(
+        report["claims"]["claim_issues"][2]["reason"],
+        "missing_branch"
+    );
+}
+
+#[test]
 fn doctor_reports_corrupt_claims_metadata() {
     let dir = TestDir::new("zaphod-cli-doctor");
     init_repo_with_pair_branches(dir.path());

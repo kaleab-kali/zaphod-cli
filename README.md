@@ -616,6 +616,10 @@ Use `--stale-after` to make `doctor` report stale agent claims as repository
 health problems. This is read-only; cleanup still requires `unclaim` or
 `prune-claims --apply`.
 
+`doctor` also reports claim metadata that no longer matches the repository,
+including claims for removed pairs, claims on branches outside the configured
+pair, and claims on local branches that no longer exist.
+
 ### `zaphod unpair`
 
 Remove a branch pair:

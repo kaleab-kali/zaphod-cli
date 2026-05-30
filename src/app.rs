@@ -1,7 +1,7 @@
 use crate::cli::{Cli, CliCommand, PairSide};
 use crate::core::{
-    AgentClaim, BranchPair, ClaimError, GitState, PairError, PairStatus, RefusalReason,
-    StatusError, WorktreeStatus, validate_agent_name, validate_pair_name,
+    AgentClaim, BranchPair, BranchPairs, ClaimError, GitState, PairError, PairStatus,
+    RefusalReason, StatusError, WorktreeStatus, validate_agent_name, validate_pair_name,
 };
 use crate::git::{GitError, GitRepository};
 use crate::metadata::{ClaimStore, MetadataError, MetadataStore};
@@ -1070,6 +1070,7 @@ fn build_doctor_report(stale_after_seconds: Option<u64>) -> DoctorReport {
     );
 
     let store = MetadataStore::for_repository(&repository);
+    let mut loaded_pairs = None;
     match store.load() {
         Ok(pairs) => {
             let mut pair_reports = Vec::new();
@@ -1102,6 +1103,7 @@ fn build_doctor_report(stale_after_seconds: Option<u64>) -> DoctorReport {
                 }
             }
 
+            loaded_pairs = Some(pairs.clone());
             report.metadata = Some(DoctorMetadataReport {
                 ok: true,
                 path: Some(store.path().display().to_string()),
@@ -1126,6 +1128,8 @@ fn build_doctor_report(stale_after_seconds: Option<u64>) -> DoctorReport {
     match claim_store.load() {
         Ok(claims) => {
             let now_unix = current_unix_timestamp().ok();
+            let claim_issues =
+                diagnose_claim_issues(&repository, loaded_pairs.as_ref(), claims.claims());
             let stale_claims = match (stale_after_seconds, now_unix) {
                 (Some(stale_after_seconds), Some(now_unix)) => claims
                     .claims()
@@ -1136,14 +1140,20 @@ fn build_doctor_report(stale_after_seconds: Option<u64>) -> DoctorReport {
                 _ => Vec::new(),
             };
 
-            if !stale_claims.is_empty() || (stale_after_seconds.is_some() && now_unix.is_none()) {
+            if !claim_issues.is_empty()
+                || !stale_claims.is_empty()
+                || (stale_after_seconds.is_some() && now_unix.is_none())
+            {
                 report.healthy = false;
             }
 
             report.claims = Some(DoctorClaimsReport {
-                ok: stale_after_seconds.is_none_or(|_| now_unix.is_some()),
+                ok: claim_issues.is_empty()
+                    && stale_after_seconds.is_none_or(|_| now_unix.is_some()),
                 path: Some(claim_store.path().display().to_string()),
                 claim_count: Some(claims.claims().len()),
+                claim_issue_count: Some(claim_issues.len()),
+                claim_issues,
                 stale_after_seconds,
                 stale_claim_count: Some(stale_claims.len()),
                 stale_claims,
@@ -1160,6 +1170,8 @@ fn build_doctor_report(stale_after_seconds: Option<u64>) -> DoctorReport {
                 ok: false,
                 path: Some(claim_store.path().display().to_string()),
                 claim_count: None,
+                claim_issue_count: None,
+                claim_issues: Vec::new(),
                 stale_after_seconds,
                 stale_claim_count: None,
                 stale_claims: Vec::new(),
@@ -1242,12 +1254,28 @@ fn print_doctor_report(report: &DoctorReport) {
     }
 
     if let Some(claims) = &report.claims {
-        if claims.ok {
+        if let Some(error) = &claims.error {
+            println!("Claims: error ({error})");
+        } else {
+            let status = if claims.ok { "ok" } else { "problems" };
             println!(
-                "Claims: ok ({} claim(s), {})",
+                "Claims: {} ({} claim(s), {})",
+                status,
                 claims.claim_count.unwrap_or_default(),
                 claims.path.as_deref().unwrap_or("unknown")
             );
+            if !claims.claim_issues.is_empty() {
+                println!(
+                    "Claim issues: {}",
+                    claims.claim_issue_count.unwrap_or_default()
+                );
+                for issue in &claims.claim_issues {
+                    println!(
+                        "- {}: {} on {} [{}]",
+                        issue.claim.agent, issue.claim.pair, issue.claim.branch, issue.message
+                    );
+                }
+            }
             if let Some(stale_after_seconds) = claims.stale_after_seconds {
                 let stale_claim_count = claims.stale_claim_count.unwrap_or_default();
                 println!(
@@ -1263,8 +1291,6 @@ fn print_doctor_report(report: &DoctorReport) {
                     }
                 }
             }
-        } else if let Some(error) = &claims.error {
-            println!("Claims: error ({error})");
         }
     }
 }
@@ -1324,6 +1350,57 @@ fn diagnose_pair_branches(
             pair.left, pair.right
         )),
     }
+}
+
+fn diagnose_claim_issues(
+    repository: &GitRepository,
+    pairs: Option<&BranchPairs>,
+    claims: &[AgentClaim],
+) -> Vec<DoctorClaimIssueReport> {
+    let Some(pairs) = pairs else {
+        return Vec::new();
+    };
+
+    claims
+        .iter()
+        .filter_map(|claim| {
+            let pair = match pairs.get(&claim.pair) {
+                Some(pair) => pair,
+                None => {
+                    return Some(DoctorClaimIssueReport {
+                        claim: claim.clone(),
+                        reason: "missing_pair",
+                        message: format!("pair '{}' is not configured", claim.pair),
+                    });
+                }
+            };
+
+            if pair_side_for_branch(pair, &claim.branch).is_none() {
+                return Some(DoctorClaimIssueReport {
+                    claim: claim.clone(),
+                    reason: "branch_not_in_pair",
+                    message: format!(
+                        "branch '{}' is not part of pair '{}'",
+                        claim.branch, claim.pair
+                    ),
+                });
+            }
+
+            match repository.branch_exists(&claim.branch) {
+                Ok(true) => None,
+                Ok(false) => Some(DoctorClaimIssueReport {
+                    claim: claim.clone(),
+                    reason: "missing_branch",
+                    message: format!("branch '{}' was not found", claim.branch),
+                }),
+                Err(error) => Some(DoctorClaimIssueReport {
+                    claim: claim.clone(),
+                    reason: "branch_lookup_error",
+                    message: error.to_string(),
+                }),
+            }
+        })
+        .collect()
 }
 
 fn build_status_report(
@@ -2078,10 +2155,19 @@ struct DoctorClaimsReport {
     ok: bool,
     path: Option<String>,
     claim_count: Option<usize>,
+    claim_issue_count: Option<usize>,
+    claim_issues: Vec<DoctorClaimIssueReport>,
     stale_after_seconds: Option<u64>,
     stale_claim_count: Option<usize>,
     stale_claims: Vec<AgentClaim>,
     error: Option<String>,
+}
+
+#[derive(Debug, Serialize)]
+struct DoctorClaimIssueReport {
+    claim: AgentClaim,
+    reason: &'static str,
+    message: String,
 }
 
 fn pair_side_for_branch(pair: &BranchPair, branch: &str) -> Option<PairSide> {
