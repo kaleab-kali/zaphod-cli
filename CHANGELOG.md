@@ -3,9 +3,14 @@
 All notable changes to Zaphod will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
-and this project intends to follow semantic versioning once releases begin.
+and this project uses semantic versioning for published releases.
 
 ## Unreleased
+
+### Added
+
+- `pair --json`, `init --json`, `rename --json`, and `unpair --json` for
+  machine-readable pair metadata mutation reports.
 
 ## 0.1.9 - 2026-05-30
 

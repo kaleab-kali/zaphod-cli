@@ -119,6 +119,83 @@ fn init_pairs_current_branch_with_other_branch() {
 }
 
 #[test]
+fn init_json_reports_initialized_pair() {
+    let dir = TestDir::new("zaphod-cli-metadata");
+    init_repo_with_pair_branches(dir.path());
+
+    let output = zaphod(dir.path(), ["init", "feature/ui", "--json"]);
+
+    assert_success(&output);
+    let report: serde_json::Value = serde_json::from_slice(&output.stdout).expect("init json");
+    assert_eq!(report["ok"], true);
+    assert_eq!(report["action"], "initialized");
+    assert_eq!(report["pair"]["name"], "default");
+    assert_eq!(report["pair"]["left"], "feature/api");
+    assert_eq!(report["pair"]["right"], "feature/ui");
+    assert!(report["previous_pair"].is_null());
+    assert!(report["repository_root"].as_str().is_some());
+    assert!(
+        report["pairs_path"]
+            .as_str()
+            .expect("pairs path")
+            .ends_with("pairs.toml")
+    );
+}
+
+#[test]
+fn pair_mutation_commands_emit_json_reports() {
+    let dir = TestDir::new("zaphod-cli-metadata");
+    init_repo_with_pair_branches(dir.path());
+
+    let pair = zaphod(dir.path(), ["pair", "feature/api", "feature/ui", "--json"]);
+    assert_success(&pair);
+    let report: serde_json::Value = serde_json::from_slice(&pair.stdout).expect("pair json");
+    assert_eq!(report["ok"], true);
+    assert_eq!(report["action"], "created");
+    assert_eq!(report["pair"]["name"], "default");
+    assert_eq!(report["pair"]["left"], "feature/api");
+    assert_eq!(report["pair"]["right"], "feature/ui");
+    assert!(report["previous_pair"].is_null());
+    assert!(report["repository_root"].as_str().is_some());
+    assert!(
+        report["pairs_path"]
+            .as_str()
+            .expect("pairs path")
+            .ends_with("pairs.toml")
+    );
+
+    let update = zaphod(dir.path(), ["pair", "main", "feature/ui", "--json"]);
+    assert_success(&update);
+    let report: serde_json::Value = serde_json::from_slice(&update.stdout).expect("update json");
+    assert_eq!(report["action"], "updated");
+    assert_eq!(report["pair"]["left"], "main");
+    assert_eq!(report["previous_pair"]["name"], "default");
+    assert_eq!(report["previous_pair"]["left"], "feature/api");
+    assert_eq!(report["previous_pair"]["right"], "feature/ui");
+
+    let rename = zaphod(dir.path(), ["rename", "default", "api", "--json"]);
+    assert_success(&rename);
+    let report: serde_json::Value = serde_json::from_slice(&rename.stdout).expect("rename json");
+    assert_eq!(report["action"], "renamed");
+    assert_eq!(report["pair"]["name"], "api");
+    assert_eq!(report["pair"]["left"], "main");
+    assert_eq!(report["previous_pair"]["name"], "default");
+
+    let unpair = zaphod(dir.path(), ["unpair", "--name", "api", "--json"]);
+    assert_success(&unpair);
+    let report: serde_json::Value = serde_json::from_slice(&unpair.stdout).expect("unpair json");
+    assert_eq!(report["action"], "removed");
+    assert_eq!(report["pair"]["name"], "api");
+    assert_eq!(report["pair"]["left"], "main");
+    assert!(report["previous_pair"].is_null());
+
+    let list = zaphod(dir.path(), ["list", "--json"]);
+    assert_success(&list);
+    let pairs: serde_json::Value = serde_json::from_slice(&list.stdout).expect("list json");
+    assert_eq!(pairs, json!([]));
+}
+
+#[test]
 fn rename_updates_pair_name() {
     let dir = TestDir::new("zaphod-cli-metadata");
     init_repo_with_pair_branches(dir.path());
