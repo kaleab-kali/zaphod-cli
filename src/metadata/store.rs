@@ -4,7 +4,7 @@ use atomic_write_file::AtomicWriteFile;
 use std::error::Error;
 use std::fmt::{self, Display, Formatter};
 use std::fs;
-use std::io::Write;
+use std::io::{ErrorKind, Write};
 use std::path::{Path, PathBuf};
 
 #[derive(Debug, Clone)]
@@ -26,6 +26,10 @@ impl MetadataStore {
 
     pub fn path(&self) -> &Path {
         &self.path
+    }
+
+    pub(crate) fn lock(&self) -> Result<MetadataLock, MetadataError> {
+        MetadataLock::acquire_for_metadata_path(&self.path)
     }
 
     pub fn load(&self) -> Result<BranchPairs, MetadataError> {
@@ -101,6 +105,10 @@ impl ClaimStore {
         &self.path
     }
 
+    pub(crate) fn lock(&self) -> Result<MetadataLock, MetadataError> {
+        MetadataLock::acquire_for_metadata_path(&self.path)
+    }
+
     pub fn load(&self) -> Result<AgentClaims, MetadataError> {
         if !self.path.exists() {
             return Ok(AgentClaims::default());
@@ -154,7 +162,54 @@ impl ClaimStore {
 }
 
 #[derive(Debug)]
+#[must_use = "metadata locks are released when dropped"]
+pub(crate) struct MetadataLock {
+    path: PathBuf,
+}
+
+impl MetadataLock {
+    fn acquire_for_metadata_path(metadata_path: &Path) -> Result<Self, MetadataError> {
+        let metadata_dir = metadata_path
+            .parent()
+            .ok_or_else(|| MetadataError::MissingParent {
+                path: metadata_path.to_path_buf(),
+            })?;
+        fs::create_dir_all(metadata_dir).map_err(|source| MetadataError::CreateDirectory {
+            path: metadata_dir.to_path_buf(),
+            source,
+        })?;
+
+        let lock_path = metadata_dir.join("metadata.lock");
+        match fs::create_dir(&lock_path) {
+            Ok(()) => Ok(Self { path: lock_path }),
+            Err(source) if source.kind() == ErrorKind::AlreadyExists => {
+                Err(MetadataError::Locked { path: lock_path })
+            }
+            Err(source) => Err(MetadataError::AcquireLock {
+                path: lock_path,
+                source,
+            }),
+        }
+    }
+
+    #[cfg(test)]
+    fn path(&self) -> &Path {
+        &self.path
+    }
+}
+
+impl Drop for MetadataLock {
+    fn drop(&mut self) {
+        let _ = fs::remove_dir(&self.path);
+    }
+}
+
+#[derive(Debug)]
 pub enum MetadataError {
+    AcquireLock {
+        path: PathBuf,
+        source: std::io::Error,
+    },
     CreateDirectory {
         path: PathBuf,
         source: std::io::Error,
@@ -167,6 +222,9 @@ pub enum MetadataError {
         source: toml::ser::Error,
     },
     MissingParent {
+        path: PathBuf,
+    },
+    Locked {
         path: PathBuf,
     },
     Read {
@@ -187,6 +245,13 @@ pub enum MetadataError {
 impl Display for MetadataError {
     fn fmt(&self, formatter: &mut Formatter<'_>) -> fmt::Result {
         match self {
+            Self::AcquireLock { path, .. } => {
+                write!(
+                    formatter,
+                    "failed to acquire metadata lock {}",
+                    path.display()
+                )
+            }
             Self::CreateDirectory { path, .. } => {
                 write!(
                     formatter,
@@ -209,6 +274,11 @@ impl Display for MetadataError {
                     path.display()
                 )
             }
+            Self::Locked { path } => write!(
+                formatter,
+                "metadata is locked by another Zaphod process ({}); retry after it finishes",
+                path.display()
+            ),
             Self::Read { path, .. } => {
                 write!(formatter, "failed to read metadata file {}", path.display())
             }
@@ -235,12 +305,15 @@ impl Display for MetadataError {
 impl Error for MetadataError {
     fn source(&self) -> Option<&(dyn Error + 'static)> {
         match self {
+            Self::AcquireLock { source, .. } => Some(source),
             Self::CreateDirectory { source, .. } => Some(source),
             Self::Decode { source, .. } => Some(source),
             Self::Encode { source } => Some(source),
             Self::Read { source, .. } => Some(source),
             Self::Write { source, .. } => Some(source),
-            Self::MissingParent { .. } | Self::UnsupportedSchemaVersion { .. } => None,
+            Self::Locked { .. }
+            | Self::MissingParent { .. }
+            | Self::UnsupportedSchemaVersion { .. } => None,
         }
     }
 }
@@ -301,6 +374,34 @@ mod tests {
 
         assert!(pairs.is_empty());
         assert_eq!(pairs.schema_version(), METADATA_SCHEMA_VERSION);
+    }
+
+    #[test]
+    fn metadata_lock_refuses_existing_lock() {
+        let dir = TestDir::new();
+        let store = MetadataStore::at_path(dir.path().join("zaphod").join("pairs.toml"));
+        let lock = store.lock().expect("acquire metadata lock");
+
+        let error = store.lock().expect_err("reject second metadata lock");
+
+        assert!(matches!(error, MetadataError::Locked { .. }));
+        assert!(lock.path().ends_with("metadata.lock"));
+    }
+
+    #[test]
+    fn metadata_lock_is_released_on_drop() {
+        let dir = TestDir::new();
+        let store = MetadataStore::at_path(dir.path().join("zaphod").join("pairs.toml"));
+        let first_lock_path = {
+            let lock = store.lock().expect("acquire metadata lock");
+            let path = lock.path().to_path_buf();
+            assert!(path.exists());
+            path
+        };
+
+        assert!(!first_lock_path.exists());
+        let second_lock = store.lock().expect("reacquire metadata lock");
+        assert!(second_lock.path().exists());
     }
 
     #[test]

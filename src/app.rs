@@ -159,6 +159,7 @@ fn init_pair(name: String, other: String, json: bool) -> Result<(), AppError> {
 }
 
 fn save_pair(store: &MetadataStore, pair: BranchPair) -> Result<Option<BranchPair>, AppError> {
+    let _lock = store.lock()?;
     let mut pairs = store.load()?;
     let previous_pair = pairs.upsert(pair);
     store.save(&pairs)?;
@@ -191,6 +192,7 @@ fn list_pairs(json: bool) -> Result<(), AppError> {
 fn unpair_branches(name: &str, json: bool) -> Result<(), AppError> {
     let repository = GitRepository::discover(".")?;
     let store = MetadataStore::for_repository(&repository);
+    let _lock = store.lock()?;
     let mut pairs = store.load()?;
     let removed = pairs.remove(name).ok_or_else(|| AppError::PairNotFound {
         name: name.to_owned(),
@@ -213,6 +215,7 @@ fn unpair_branches(name: &str, json: bool) -> Result<(), AppError> {
 fn rename_pair(old_name: &str, new_name: &str, json: bool) -> Result<(), AppError> {
     let repository = GitRepository::discover(".")?;
     let store = MetadataStore::for_repository(&repository);
+    let _lock = store.lock()?;
     let mut pairs = store.load()?;
 
     if old_name != new_name && pairs.get(new_name).is_some() {
@@ -537,8 +540,10 @@ fn assert_repository_state(
 
 fn claim_current_scope(json: bool, agent: String, pair_name: String) -> Result<(), AppError> {
     validate_agent_name(&agent)?;
+    let repository = GitRepository::discover(".")?;
+    let store = ClaimStore::for_repository(&repository);
+    let _lock = store.lock()?;
     let context = load_status_context(&pair_name)?;
-    let store = ClaimStore::for_repository(&context.repository);
 
     if !context.status.switch_allowed {
         let report = ClaimOperationReport {
@@ -612,8 +617,10 @@ fn claim_current_scope(json: bool, agent: String, pair_name: String) -> Result<(
 
 fn heartbeat_claim(json: bool, agent: String, pair_name: String) -> Result<(), AppError> {
     validate_agent_name(&agent)?;
+    let repository = GitRepository::discover(".")?;
+    let store = ClaimStore::for_repository(&repository);
+    let _lock = store.lock()?;
     let context = load_status_context(&pair_name)?;
-    let store = ClaimStore::for_repository(&context.repository);
     let mut claims = store.load()?;
 
     if let Some(conflict) =
@@ -771,6 +778,7 @@ fn prune_claims(
     }
 
     let store = ClaimStore::for_repository(&repository);
+    let _lock = if apply { Some(store.lock()?) } else { None };
     let mut claims = store.load()?;
     let pairs = if orphaned {
         Some(MetadataStore::for_repository(&repository).load()?)
@@ -860,6 +868,7 @@ fn unclaim_current_scope(
         None => repository.current_branch()?,
     };
     let store = ClaimStore::for_repository(&repository);
+    let _lock = store.lock()?;
     let mut claims = store.load()?;
 
     let removed =

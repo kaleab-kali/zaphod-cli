@@ -7,6 +7,11 @@ and this project uses semantic versioning for published releases.
 
 ## Unreleased
 
+### Added
+
+- Repo-local metadata mutation locking to avoid overlapping pair or claim
+  writes from concurrent Zaphod processes.
+
 ## 0.1.13 - 2026-05-30
 
 ### Added

@@ -85,6 +85,20 @@ fn pair_list_and_unpair_update_repo_metadata() {
 }
 
 #[test]
+fn pair_refuses_existing_metadata_lock() {
+    let dir = TestDir::new("zaphod-cli-metadata");
+    init_repo_with_pair_branches(dir.path());
+    fs::create_dir_all(dir.git_dir().join("zaphod").join("metadata.lock"))
+        .expect("create metadata lock");
+
+    let output = zaphod(dir.path(), ["pair", "feature/api", "feature/ui"]);
+
+    assert!(!output.status.success());
+    assert_eq!(output.status.code(), Some(1));
+    assert_stderr_contains(&output, "metadata is locked by another Zaphod process");
+}
+
+#[test]
 fn init_pairs_current_branch_with_other_branch() {
     let dir = TestDir::new("zaphod-cli-metadata");
     init_repo_with_pair_branches(dir.path());
