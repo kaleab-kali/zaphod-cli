@@ -715,6 +715,11 @@ are treated as schema version 1 for compatibility with early releases. Files
 with a newer unsupported schema version are refused with a clear error instead
 of being partially interpreted.
 
+Commands that write pair or claim metadata create a short-lived
+`.git/zaphod/metadata.lock` directory while they load, modify, and save the
+metadata. If another Zaphod process already holds that lock, the command refuses
+instead of risking an overwritten update.
+
 Metadata saves use atomic file replacement so interrupted writes do not leave
 `.git/zaphod/pairs.toml` or `.git/zaphod/claims.toml` partially written.
 
