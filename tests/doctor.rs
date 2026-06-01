@@ -22,6 +22,7 @@ fn doctor_reports_healthy_repository() {
     assert_stdout_contains(&output, "Current branch: feature/api");
     assert_stdout_contains(&output, "Worktree: clean");
     assert_stdout_contains(&output, "Git state: ready");
+    assert_stdout_contains(&output, "Metadata lock: clear (");
     assert_stdout_contains(&output, "Metadata: ok (1 pair(s), ");
     assert_stdout_contains(&output, "Pairs:");
     assert_stdout_contains(&output, "- default: feature/api <-> feature/ui [ok]");
@@ -51,6 +52,8 @@ fn doctor_can_emit_json_for_healthy_repository() {
     assert_eq!(report["current_branch"]["branch"], "feature/api");
     assert_eq!(report["worktree"]["state"], "clean");
     assert_eq!(report["git_state"], "ready");
+    assert_eq!(report["metadata_lock"]["ok"], true);
+    assert_eq!(report["metadata_lock"]["locked"], false);
     assert_eq!(report["metadata"]["ok"], true);
     assert_eq!(report["metadata"]["pair_count"], 1);
     assert_eq!(report["claims"]["ok"], true);
@@ -68,6 +71,32 @@ fn doctor_can_emit_json_for_healthy_repository() {
             }
         ])
     );
+}
+
+#[test]
+fn doctor_reports_metadata_lock() {
+    let dir = TestDir::new("zaphod-cli-doctor");
+    init_repo_with_pair_branches(dir.path());
+    let pair = zaphod(dir.path(), ["pair", "feature/api", "feature/ui"]);
+    assert_success(&pair);
+    fs::create_dir_all(dir.git_dir().join("zaphod").join("metadata.lock"))
+        .expect("create metadata lock");
+
+    let output = zaphod(dir.path(), ["doctor"]);
+
+    assert!(!output.status.success());
+    assert_eq!(output.status.code(), Some(4));
+    assert_stdout_contains(&output, "Metadata lock: locked (");
+    assert_stderr_contains(&output, "doctor found problems");
+
+    let output = zaphod(dir.path(), ["doctor", "--json"]);
+
+    assert!(!output.status.success());
+    assert_eq!(output.status.code(), Some(4));
+    let report: serde_json::Value = serde_json::from_slice(&output.stdout).expect("doctor json");
+    assert_eq!(report["healthy"], false);
+    assert_eq!(report["metadata_lock"]["ok"], false);
+    assert_eq!(report["metadata_lock"]["locked"], true);
 }
 
 #[test]
@@ -338,6 +367,7 @@ fn doctor_json_reports_directory_outside_git_repository() {
     assert_eq!(report["git"]["ok"], true);
     assert_eq!(report["repository"]["ok"], false);
     assert_eq!(report["repository"]["error"], "not inside a Git repository");
+    assert!(report["metadata_lock"].is_null());
     assert!(report["metadata"].is_null());
     assert_stderr_contains(&output, "doctor found problems");
 }

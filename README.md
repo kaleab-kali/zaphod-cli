@@ -626,6 +626,11 @@ health problems. This is read-only; cleanup still requires `unclaim` or
 including claims for removed pairs, claims on branches outside the configured
 pair, and claims on local branches that no longer exist.
 
+`doctor` reports the repo-local metadata mutation lock as clear or locked. A
+present `.git/zaphod/metadata.lock` makes the report unhealthy because pair and
+claim write commands will refuse to run while another Zaphod process appears to
+hold the lock.
+
 ### `zaphod unpair`
 
 Remove a branch pair:

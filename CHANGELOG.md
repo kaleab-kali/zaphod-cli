@@ -7,6 +7,11 @@ and this project uses semantic versioning for published releases.
 
 ## Unreleased
 
+### Added
+
+- `doctor` now reports whether the repo-local metadata mutation lock is clear
+  or currently present.
+
 ## 0.1.14 - 2026-06-01
 
 ### Added
