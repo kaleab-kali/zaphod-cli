@@ -7,6 +7,8 @@ and this project uses semantic versioning for published releases.
 
 ## Unreleased
 
+## 0.1.14 - 2026-06-01
+
 ### Added
 
 - Repo-local metadata mutation locking to avoid overlapping pair or claim
