@@ -7,6 +7,8 @@ and this project uses semantic versioning for published releases.
 
 ## Unreleased
 
+## 0.1.16 - 2026-06-01
+
 ### Added
 
 - `preflight --agent` and agent handoff reports now include metadata lock state
