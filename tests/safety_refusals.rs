@@ -243,6 +243,33 @@ fn preflight_json_reports_claim_conflict() {
 }
 
 #[test]
+fn preflight_json_reports_metadata_lock_claim_blocker() {
+    let dir = TestDir::new("zaphod-cli-safety");
+    init_repo_with_pair_branches(dir.path());
+    let pair = zaphod(dir.path(), ["pair", "feature/api", "feature/ui"]);
+    assert_success(&pair);
+    fs::create_dir_all(dir.git_dir().join("zaphod").join("metadata.lock"))
+        .expect("create metadata lock");
+
+    let output = zaphod(dir.path(), ["preflight", "--json", "--agent", "codex"]);
+
+    assert!(!output.status.success());
+    assert_eq!(output.status.code(), Some(3));
+    let report: serde_json::Value = serde_json::from_slice(&output.stdout).expect("preflight json");
+    assert_eq!(report["ready"], false);
+    assert_eq!(report["switch_allowed"], true);
+    assert_eq!(report["claim"]["requested_agent"], "codex");
+    assert_eq!(report["claim"]["claim_allowed"], false);
+    assert_eq!(report["claim"]["metadata_lock"]["ok"], false);
+    assert_eq!(report["claim"]["metadata_lock"]["locked"], true);
+    assert!(report["claim"]["conflict"].is_null());
+    assert_stderr_contains(
+        &output,
+        "claim for agent 'codex' on pair 'default' and branch 'feature/api' is blocked",
+    );
+}
+
+#[test]
 fn preflight_json_reports_stale_claim_conflict() {
     let dir = TestDir::new("zaphod-cli-safety");
     init_repo_with_pair_branches(dir.path());

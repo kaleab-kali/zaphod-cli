@@ -351,6 +351,11 @@ Use `--agent` to check whether another agent has already claimed the current
 pair and branch. This does not create or remove a claim; it only reports whether
 claiming would be allowed.
 
+When `--agent` is present, preflight also reports the repo-local metadata
+mutation lock. If `.git/zaphod/metadata.lock` is present, preflight marks claim
+readiness as blocked because `claim` would refuse to write while another Zaphod
+process appears to hold the metadata lock.
+
 Use `--stale-after` with `--agent` to mark old claim conflicts in the preflight
 report. Preflight still refuses the conflict; stale reporting is only a signal
 for scripts or humans to decide whether an explicit `unclaim` is appropriate.
@@ -480,6 +485,9 @@ Use `--stale-after` with `--agent` when the receiving agent needs to know
 whether a claim conflict looks abandoned. The value uses the same duration
 format as other stale-claim checks: a positive number followed by `s`, `m`, `h`,
 or `d`.
+
+When `--agent` is present, the handoff claim-readiness section includes the
+same metadata lock state as `preflight --agent`.
 
 ### `zaphod status`
 
