@@ -7,6 +7,12 @@ and this project uses semantic versioning for published releases.
 
 ## Unreleased
 
+### Added
+
+- `preflight --agent` and agent handoff reports now include metadata lock state
+  and refuse claim readiness when pair or claim metadata writes are already
+  locked.
+
 ## 0.1.15 - 2026-06-01
 
 ### Added

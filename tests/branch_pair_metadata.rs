@@ -420,6 +420,8 @@ fn preflight_json_reports_claim_readiness_for_agent() {
     assert_eq!(report["ready"], true);
     assert_eq!(report["claim"]["requested_agent"], "codex");
     assert_eq!(report["claim"]["claim_allowed"], true);
+    assert_eq!(report["claim"]["metadata_lock"]["ok"], true);
+    assert_eq!(report["claim"]["metadata_lock"]["locked"], false);
     assert!(report["claim"]["conflict"].is_null());
 }
 
@@ -798,6 +800,8 @@ fn handoff_json_reports_pair_claims_and_agent_readiness() {
     assert_eq!(report["claims"][0]["pair"], "default");
     assert_eq!(report["claim"]["requested_agent"], "other");
     assert_eq!(report["claim"]["claim_allowed"], false);
+    assert_eq!(report["claim"]["metadata_lock"]["ok"], true);
+    assert_eq!(report["claim"]["metadata_lock"]["locked"], false);
     assert!(report["claim"]["stale_after_seconds"].is_null());
     assert!(report["claim"]["conflict_stale"].is_null());
     assert_eq!(report["claim"]["conflict"]["agent"], "codex");

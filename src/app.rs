@@ -364,10 +364,19 @@ fn run_preflight(
     match load_status_context(name) {
         Ok(context) => {
             let mut report = PreflightReport::from_status_context(&context);
+            let mut claim_blocked = None;
             let claim_conflict = if let Some(agent) = agent {
                 let claim_report =
                     build_preflight_claim_report(&context, agent, stale_after_seconds)?;
                 let conflict = claim_report.conflict.clone();
+                if conflict.is_none() && !claim_report.metadata_lock.ok {
+                    claim_blocked = Some(AppError::ClaimBlocked {
+                        agent: claim_report.requested_agent.clone(),
+                        pair: context.status.pair.clone(),
+                        branch: context.status.current.clone(),
+                        reason: metadata_lock_block_reason(&claim_report.metadata_lock),
+                    });
+                }
                 report.ready = report.ready && claim_report.claim_allowed;
                 report.claim = Some(claim_report);
                 conflict
@@ -387,6 +396,8 @@ fn run_preflight(
                     pair: conflict.pair,
                     branch: conflict.branch,
                 })
+            } else if let Some(error) = claim_blocked {
+                Err(error)
             } else if context.status.switch_allowed {
                 Ok(())
             } else {
@@ -413,6 +424,7 @@ fn build_preflight_claim_report(
     stale_after_seconds: Option<u64>,
 ) -> Result<PreflightClaimReport, AppError> {
     let store = ClaimStore::for_repository(&context.repository);
+    let metadata_lock = build_metadata_lock_report(&store.lock_path());
     let claims = store.load()?;
     let conflict = claims
         .conflict_for_scope(&agent, &context.status.pair, &context.status.current)
@@ -434,7 +446,8 @@ fn build_preflight_claim_report(
 
     Ok(PreflightClaimReport {
         requested_agent: agent,
-        claim_allowed: conflict.is_none(),
+        claim_allowed: conflict.is_none() && metadata_lock.ok,
+        metadata_lock,
         stale_after_seconds,
         conflict_stale,
         conflict,
@@ -1006,10 +1019,12 @@ fn show_handoff(
                 )
             })
         });
+        let metadata_lock = build_metadata_lock_report(&claim_store.lock_path());
 
         report.claim = Some(PreflightClaimReport {
             requested_agent: agent,
-            claim_allowed: conflict.is_none(),
+            claim_allowed: conflict.is_none() && metadata_lock.ok,
+            metadata_lock,
             stale_after_seconds,
             conflict_stale,
             conflict,
@@ -1429,21 +1444,36 @@ fn diagnose_pair_branches(
     }
 }
 
-fn build_metadata_lock_report(lock_path: &Path) -> DoctorMetadataLockReport {
+fn build_metadata_lock_report(lock_path: &Path) -> MetadataLockReport {
     match lock_path.try_exists() {
-        Ok(locked) => DoctorMetadataLockReport {
+        Ok(locked) => MetadataLockReport {
             ok: !locked,
             path: Some(lock_path.display().to_string()),
             locked: Some(locked),
             error: None,
         },
-        Err(error) => DoctorMetadataLockReport {
+        Err(error) => MetadataLockReport {
             ok: false,
             path: Some(lock_path.display().to_string()),
             locked: None,
             error: Some(error.to_string()),
         },
     }
+}
+
+fn metadata_lock_block_reason(metadata_lock: &MetadataLockReport) -> String {
+    if let Some(error) = &metadata_lock.error {
+        return format!("metadata lock state could not be checked: {error}");
+    }
+
+    if metadata_lock.locked.unwrap_or(false) {
+        return format!(
+            "metadata is locked by another Zaphod process ({})",
+            metadata_lock.path.as_deref().unwrap_or("unknown")
+        );
+    }
+
+    "metadata lock state prevents claiming".to_owned()
 }
 
 fn diagnose_claim_issues(
@@ -1662,6 +1692,29 @@ fn print_preflight_report(report: &PreflightReport) {
                 _ => String::new(),
             };
             println!("Claim: refused (claimed by {}{})", conflict.agent, stale);
+        } else if let Some(error) = &claim.metadata_lock.error {
+            println!("Claim: refused (metadata lock error: {error})");
+        } else if claim.metadata_lock.locked.unwrap_or(false) {
+            println!(
+                "Claim: refused (metadata lock present at {})",
+                claim.metadata_lock.path.as_deref().unwrap_or("unknown")
+            );
+        } else {
+            println!("Claim: refused");
+        }
+
+        if let Some(error) = &claim.metadata_lock.error {
+            println!("Claim metadata lock: error ({error})");
+        } else if claim.metadata_lock.locked.unwrap_or(false) {
+            println!(
+                "Claim metadata lock: locked ({})",
+                claim.metadata_lock.path.as_deref().unwrap_or("unknown")
+            );
+        } else {
+            println!(
+                "Claim metadata lock: clear ({})",
+                claim.metadata_lock.path.as_deref().unwrap_or("unknown")
+            );
         }
     }
 
@@ -2044,6 +2097,7 @@ struct PreflightErrorReport {
 struct PreflightClaimReport {
     requested_agent: String,
     claim_allowed: bool,
+    metadata_lock: MetadataLockReport,
     stale_after_seconds: Option<u64>,
     conflict_stale: Option<bool>,
     conflict: Option<AgentClaim>,
@@ -2192,7 +2246,7 @@ struct DoctorReport {
     current_branch: Option<DoctorCurrentBranchReport>,
     worktree: Option<DoctorWorktreeReport>,
     git_state: Option<String>,
-    metadata_lock: Option<DoctorMetadataLockReport>,
+    metadata_lock: Option<MetadataLockReport>,
     metadata: Option<DoctorMetadataReport>,
     claims: Option<DoctorClaimsReport>,
 }
@@ -2243,7 +2297,7 @@ struct DoctorWorktreeReport {
 }
 
 #[derive(Debug, Serialize)]
-struct DoctorMetadataLockReport {
+struct MetadataLockReport {
     ok: bool,
     path: Option<String>,
     locked: Option<bool>,
@@ -2402,6 +2456,12 @@ pub enum AppError {
     Claim {
         source: ClaimError,
     },
+    ClaimBlocked {
+        agent: String,
+        pair: String,
+        branch: String,
+        reason: String,
+    },
     ClaimConflict {
         agent: String,
         pair: String,
@@ -2459,6 +2519,15 @@ impl Display for AppError {
             }
             Self::BranchNotFound { branch } => write!(formatter, "branch '{branch}' was not found"),
             Self::Claim { source } => Display::fmt(source, formatter),
+            Self::ClaimBlocked {
+                agent,
+                pair,
+                branch,
+                reason,
+            } => write!(
+                formatter,
+                "claim for agent '{agent}' on pair '{pair}' and branch '{branch}' is blocked: {reason}"
+            ),
             Self::ClaimConflict {
                 agent,
                 pair,
@@ -2523,6 +2592,7 @@ impl Error for AppError {
             Self::Status { source } => Some(source),
             Self::AssertFailed { .. }
             | Self::BranchNotFound { .. }
+            | Self::ClaimBlocked { .. }
             | Self::ClaimConflict { .. }
             | Self::ClaimNotFound { .. }
             | Self::DoctorFailed
@@ -2550,6 +2620,7 @@ impl AppError {
             | Self::PairNotFound { .. }
             | Self::Status { .. } => 2,
             Self::ClaimConflict { .. }
+            | Self::ClaimBlocked { .. }
             | Self::PreflightRefused { .. }
             | Self::SwitchRefused { .. } => 3,
             Self::DoctorFailed => 4,
@@ -2568,6 +2639,7 @@ impl AppError {
             Self::AssertFailed { .. } => "assert_failed",
             Self::BranchNotFound { .. } => "branch_not_found",
             Self::Claim { .. } => "claim_error",
+            Self::ClaimBlocked { .. } => "claim_blocked",
             Self::ClaimConflict { .. } => "claim_conflict",
             Self::ClaimNotFound { .. } => "claim_not_found",
             Self::Clock { .. } => "clock_error",
