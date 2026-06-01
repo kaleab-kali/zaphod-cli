@@ -426,6 +426,36 @@ fn preflight_json_reports_claim_readiness_for_agent() {
 }
 
 #[test]
+fn preflight_json_reports_expected_branch_and_side() {
+    let dir = TestDir::new("zaphod-cli-metadata");
+    init_repo_with_pair_branches(dir.path());
+    let pair = zaphod(dir.path(), ["pair", "feature/api", "feature/ui"]);
+    assert_success(&pair);
+
+    let preflight = zaphod(
+        dir.path(),
+        [
+            "preflight",
+            "--json",
+            "--branch",
+            "feature/api",
+            "--side",
+            "left",
+        ],
+    );
+
+    assert_success(&preflight);
+    let report: serde_json::Value =
+        serde_json::from_slice(&preflight.stdout).expect("preflight json");
+    assert_eq!(report["ready"], true);
+    assert_eq!(report["expectation"]["ok"], true);
+    assert_eq!(report["expectation"]["expected_branch"], "feature/api");
+    assert_eq!(report["expectation"]["expected_side"], "left");
+    assert_eq!(report["expectation"]["current_side"], "left");
+    assert_eq!(report["expectation"]["failures"], json!([]));
+}
+
+#[test]
 fn assert_json_passes_for_expected_pair_branch_and_side() {
     let dir = TestDir::new("zaphod-cli-metadata");
     init_repo_with_pair_branches(dir.path());

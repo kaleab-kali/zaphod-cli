@@ -59,6 +59,7 @@ Coding agents can use Zaphod as a preflight gate:
 
 ```sh
 zaphod preflight --agent codex --json
+zaphod preflight --agent codex --branch feature/api --side left --json
 zaphod preflight --agent codex --stale-after 2h --json
 zaphod claim --agent codex --pair api --json
 zaphod heartbeat --agent codex --pair api --json
@@ -339,6 +340,7 @@ Check whether the current repository is ready for paired-branch work:
 ```sh
 zaphod preflight --json
 zaphod preflight --agent codex --json
+zaphod preflight --branch feature/api --side left --json
 zaphod preflight --agent codex --stale-after 2h --json
 ```
 
@@ -350,6 +352,17 @@ error when the repository is not ready.
 Use `--agent` to check whether another agent has already claimed the current
 pair and branch. This does not create or remove a claim; it only reports whether
 claiming would be allowed.
+
+Use `--branch` or `--side` when automation must prove it is about to edit the
+intended branch before doing any work:
+
+```sh
+zaphod preflight --agent codex --name api --side left --json
+```
+
+The report includes an `expectation` section when either option is used. A
+wrong branch or wrong pair side makes preflight fail before an agent starts
+editing files.
 
 When `--agent` is present, preflight also reports the repo-local metadata
 mutation lock. If `.git/zaphod/metadata.lock` is present, preflight marks claim

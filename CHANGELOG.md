@@ -7,6 +7,11 @@ and this project uses semantic versioning for published releases.
 
 ## Unreleased
 
+### Added
+
+- `preflight --branch` and `preflight --side` for read-only branch expectation
+  checks before agentic or scripted work starts.
+
 ## 0.1.16 - 2026-06-01
 
 ### Added
