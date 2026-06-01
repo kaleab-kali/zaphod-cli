@@ -90,6 +90,14 @@ pub enum CliCommand {
         #[arg(long, default_value = "default")]
         name: String,
 
+        /// Branch name expected as the current branch.
+        #[arg(long)]
+        branch: Option<String>,
+
+        /// Pair side expected as the current branch.
+        #[arg(long)]
+        side: Option<PairSide>,
+
         /// Agent/session name to check for claim conflicts.
         #[arg(long)]
         agent: Option<String>,
@@ -484,6 +492,10 @@ mod tests {
             "--json",
             "--name",
             "api",
+            "--branch",
+            "feature/api",
+            "--side",
+            "left",
             "--agent",
             "codex",
             "--stale-after",
@@ -495,6 +507,8 @@ mod tests {
             CliCommand::Preflight {
                 json: true,
                 name: "api".to_owned(),
+                branch: Some("feature/api".to_owned()),
+                side: Some(PairSide::Left),
                 agent: Some("codex".to_owned()),
                 stale_after: Some("2h".to_owned()),
             }

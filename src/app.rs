@@ -41,9 +41,11 @@ pub fn run(cli: Cli) -> Result<(), AppError> {
         CliCommand::Preflight {
             json,
             name,
+            branch,
+            side,
             agent,
             stale_after,
-        } => run_preflight(&name, json, agent, stale_after),
+        } => run_preflight(&name, json, branch, side, agent, stale_after),
         CliCommand::Assert {
             json,
             pair,
@@ -350,6 +352,8 @@ fn switch_branches(name: &str, json: bool, dry_run: bool) -> Result<(), AppError
 fn run_preflight(
     name: &str,
     json: bool,
+    expected_branch: Option<String>,
+    expected_side: Option<PairSide>,
     agent: Option<String>,
     stale_after: Option<String>,
 ) -> Result<(), AppError> {
@@ -364,6 +368,18 @@ fn run_preflight(
     match load_status_context(name) {
         Ok(context) => {
             let mut report = PreflightReport::from_status_context(&context);
+            let expectation_error = if let Some(expectation) =
+                build_preflight_expectation_report(&context, expected_branch, expected_side)
+            {
+                report.ready = report.ready && expectation.ok;
+                let error = (!expectation.ok).then(|| AppError::AssertFailed {
+                    failures: expectation.failures.clone(),
+                });
+                report.expectation = Some(expectation);
+                error
+            } else {
+                None
+            };
             let mut claim_blocked = None;
             let claim_conflict = if let Some(agent) = agent {
                 let claim_report =
@@ -398,12 +414,14 @@ fn run_preflight(
                 })
             } else if let Some(error) = claim_blocked {
                 Err(error)
-            } else if context.status.switch_allowed {
-                Ok(())
-            } else {
+            } else if !context.status.switch_allowed {
                 Err(AppError::PreflightRefused {
                     reasons: context.status.refusal_reasons,
                 })
+            } else if let Some(error) = expectation_error {
+                Err(error)
+            } else {
+                Ok(())
             }
         }
         Err(error) => {
@@ -451,6 +469,47 @@ fn build_preflight_claim_report(
         stale_after_seconds,
         conflict_stale,
         conflict,
+    })
+}
+
+fn build_preflight_expectation_report(
+    context: &StatusContext,
+    expected_branch: Option<String>,
+    expected_side: Option<PairSide>,
+) -> Option<PreflightExpectationReport> {
+    if expected_branch.is_none() && expected_side.is_none() {
+        return None;
+    }
+
+    let current_side = pair_side_for_branch(&context.pair, &context.status.current);
+    let mut failures = Vec::new();
+
+    if let Some(expected_branch) = &expected_branch
+        && context.status.current != *expected_branch
+    {
+        failures.push(format!(
+            "current branch '{}' did not match expected branch '{}'",
+            context.status.current, expected_branch
+        ));
+    }
+
+    if let Some(expected_side) = expected_side
+        && current_side != Some(expected_side)
+    {
+        failures.push(format!(
+            "current branch '{}' is not the {} side of pair '{}'",
+            context.status.current,
+            pair_side_name(expected_side),
+            context.status.pair
+        ));
+    }
+
+    Some(PreflightExpectationReport {
+        ok: failures.is_empty(),
+        expected_branch,
+        expected_side: expected_side.map(pair_side_name),
+        current_side: current_side.map(pair_side_name),
+        failures,
     })
 }
 
@@ -1414,7 +1473,11 @@ fn load_status_context(name: &str) -> Result<StatusContext, AppError> {
     )
     .map_err(AppError::from)?;
 
-    Ok(StatusContext { repository, status })
+    Ok(StatusContext {
+        repository,
+        pair: pair.clone(),
+        status,
+    })
 }
 
 fn format_git_state(is_merge_in_progress: bool, is_rebase_in_progress: bool) -> &'static str {
@@ -1680,6 +1743,28 @@ fn print_preflight_report(report: &PreflightReport) {
             .collect::<Vec<_>>()
             .join("; ");
         println!("Switch: refused ({reasons})");
+    }
+
+    if let Some(expectation) = &report.expectation {
+        println!(
+            "Expectation: {}",
+            if expectation.ok { "passed" } else { "failed" }
+        );
+        if let Some(expected_branch) = &expectation.expected_branch {
+            println!("Expected branch: {expected_branch}");
+        }
+        if let Some(expected_side) = expectation.expected_side {
+            println!("Expected side: {expected_side}");
+        }
+        if let Some(current_side) = expectation.current_side {
+            println!("Current side: {current_side}");
+        }
+        if !expectation.failures.is_empty() {
+            println!("Expectation failures:");
+            for failure in &expectation.failures {
+                println!("- {failure}");
+            }
+        }
     }
 
     if let Some(claim) = &report.claim {
@@ -1970,6 +2055,7 @@ fn format_branch_health(left_exists: bool, right_exists: bool, left: &str, right
 
 struct StatusContext {
     repository: GitRepository,
+    pair: BranchPair,
     status: PairStatus,
 }
 
@@ -2044,6 +2130,7 @@ struct PreflightReport {
     git_state: Option<GitState>,
     switch_allowed: bool,
     refusal_reasons: Vec<RefusalReason>,
+    expectation: Option<PreflightExpectationReport>,
     claim: Option<PreflightClaimReport>,
     error: Option<PreflightErrorReport>,
 }
@@ -2060,6 +2147,7 @@ impl PreflightReport {
             git_state: Some(context.status.git_state),
             switch_allowed: context.status.switch_allowed,
             refusal_reasons: context.status.refusal_reasons.clone(),
+            expectation: None,
             claim: None,
             error: None,
         }
@@ -2076,6 +2164,7 @@ impl PreflightReport {
             git_state: None,
             switch_allowed: false,
             refusal_reasons: Vec::new(),
+            expectation: None,
             claim: None,
             error: Some(PreflightErrorReport {
                 kind: error.kind(),
@@ -2091,6 +2180,15 @@ struct PreflightErrorReport {
     kind: &'static str,
     message: String,
     exit_code: u8,
+}
+
+#[derive(Debug, Serialize)]
+struct PreflightExpectationReport {
+    ok: bool,
+    expected_branch: Option<String>,
+    expected_side: Option<&'static str>,
+    current_side: Option<&'static str>,
+    failures: Vec<String>,
 }
 
 #[derive(Debug, Serialize)]
