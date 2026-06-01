@@ -28,6 +28,10 @@ impl MetadataStore {
         &self.path
     }
 
+    pub fn lock_path(&self) -> PathBuf {
+        lock_path_for_metadata_path(&self.path)
+    }
+
     pub(crate) fn lock(&self) -> Result<MetadataLock, MetadataError> {
         MetadataLock::acquire_for_metadata_path(&self.path)
     }
@@ -105,6 +109,10 @@ impl ClaimStore {
         &self.path
     }
 
+    pub fn lock_path(&self) -> PathBuf {
+        lock_path_for_metadata_path(&self.path)
+    }
+
     pub(crate) fn lock(&self) -> Result<MetadataLock, MetadataError> {
         MetadataLock::acquire_for_metadata_path(&self.path)
     }
@@ -179,7 +187,7 @@ impl MetadataLock {
             source,
         })?;
 
-        let lock_path = metadata_dir.join("metadata.lock");
+        let lock_path = lock_path_for_metadata_path(metadata_path);
         match fs::create_dir(&lock_path) {
             Ok(()) => Ok(Self { path: lock_path }),
             Err(source) if source.kind() == ErrorKind::AlreadyExists => {
@@ -202,6 +210,13 @@ impl Drop for MetadataLock {
     fn drop(&mut self) {
         let _ = fs::remove_dir(&self.path);
     }
+}
+
+fn lock_path_for_metadata_path(metadata_path: &Path) -> PathBuf {
+    metadata_path
+        .parent()
+        .map(|parent| parent.join("metadata.lock"))
+        .unwrap_or_else(|| PathBuf::from("metadata.lock"))
 }
 
 #[derive(Debug)]

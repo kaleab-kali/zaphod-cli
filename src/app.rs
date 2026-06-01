@@ -11,6 +11,7 @@ use serde::Serialize;
 use std::error::Error;
 use std::fmt::{self, Display, Formatter};
 use std::io;
+use std::path::Path;
 use std::time::{SystemTime, SystemTimeError, UNIX_EPOCH};
 
 pub fn run(cli: Cli) -> Result<(), AppError> {
@@ -1124,6 +1125,12 @@ fn build_doctor_report(stale_after_seconds: Option<u64>) -> DoctorReport {
     );
 
     let store = MetadataStore::for_repository(&repository);
+    let metadata_lock_report = build_metadata_lock_report(&store.lock_path());
+    if !metadata_lock_report.ok {
+        report.healthy = false;
+    }
+    report.metadata_lock = Some(metadata_lock_report);
+
     let mut loaded_pairs = None;
     match store.load() {
         Ok(pairs) => {
@@ -1284,6 +1291,22 @@ fn print_doctor_report(report: &DoctorReport) {
         println!("Git state: {git_state}");
     }
 
+    if let Some(metadata_lock) = &report.metadata_lock {
+        if let Some(error) = &metadata_lock.error {
+            println!("Metadata lock: error ({error})");
+        } else if metadata_lock.locked.unwrap_or(false) {
+            println!(
+                "Metadata lock: locked ({})",
+                metadata_lock.path.as_deref().unwrap_or("unknown")
+            );
+        } else {
+            println!(
+                "Metadata lock: clear ({})",
+                metadata_lock.path.as_deref().unwrap_or("unknown")
+            );
+        }
+    }
+
     if let Some(metadata) = &report.metadata {
         if metadata.ok {
             println!(
@@ -1403,6 +1426,23 @@ fn diagnose_pair_branches(
             "missing both branches: {}, {}",
             pair.left, pair.right
         )),
+    }
+}
+
+fn build_metadata_lock_report(lock_path: &Path) -> DoctorMetadataLockReport {
+    match lock_path.try_exists() {
+        Ok(locked) => DoctorMetadataLockReport {
+            ok: !locked,
+            path: Some(lock_path.display().to_string()),
+            locked: Some(locked),
+            error: None,
+        },
+        Err(error) => DoctorMetadataLockReport {
+            ok: false,
+            path: Some(lock_path.display().to_string()),
+            locked: None,
+            error: Some(error.to_string()),
+        },
     }
 }
 
@@ -2152,6 +2192,7 @@ struct DoctorReport {
     current_branch: Option<DoctorCurrentBranchReport>,
     worktree: Option<DoctorWorktreeReport>,
     git_state: Option<String>,
+    metadata_lock: Option<DoctorMetadataLockReport>,
     metadata: Option<DoctorMetadataReport>,
     claims: Option<DoctorClaimsReport>,
 }
@@ -2165,6 +2206,7 @@ impl Default for DoctorReport {
             current_branch: None,
             worktree: None,
             git_state: None,
+            metadata_lock: None,
             metadata: None,
             claims: None,
         }
@@ -2197,6 +2239,14 @@ struct DoctorCurrentBranchReport {
 struct DoctorWorktreeReport {
     ok: bool,
     state: Option<String>,
+    error: Option<String>,
+}
+
+#[derive(Debug, Serialize)]
+struct DoctorMetadataLockReport {
+    ok: bool,
+    path: Option<String>,
+    locked: Option<bool>,
     error: Option<String>,
 }
 
