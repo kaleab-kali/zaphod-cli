@@ -7,6 +7,11 @@ and this project uses semantic versioning for published releases.
 
 ## Unreleased
 
+### Added
+
+- `unclaim --side` for releasing claims by the left or right side of a named
+  pair without switching branches.
+
 ## 0.1.22 - 2026-06-03
 
 ### Added
