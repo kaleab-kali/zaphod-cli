@@ -62,7 +62,7 @@ zaphod preflight --agent codex --json
 zaphod preflight --agent codex --branch feature/api --side left --json
 zaphod preflight --agent codex --stale-after 2h --json
 zaphod claim --agent codex --pair api --side left --json
-zaphod heartbeat --agent codex --pair api --json
+zaphod heartbeat --agent codex --pair api --side left --json
 zaphod assert --pair api --side left --json
 zaphod handoff --agent codex --stale-after 2h --json
 zaphod status --json
@@ -420,6 +420,7 @@ Refresh an existing agent session claim for the current pair and branch:
 ```sh
 zaphod heartbeat --agent codex --pair api
 zaphod heartbeat --agent codex --pair api --json
+zaphod heartbeat --agent codex --pair api --side left --json
 ```
 
 `heartbeat` updates the claim timestamp in `.git/zaphod/claims.toml` so
@@ -430,6 +431,9 @@ change Git history.
 
 Unlike `claim`, `heartbeat` can run while the worktree is dirty. This lets an
 agent refresh its own claim while it is actively editing files.
+
+Use `--branch` or `--side` to refuse the refresh unless the current branch is
+still the expected branch or pair side.
 
 ### `zaphod claims`
 

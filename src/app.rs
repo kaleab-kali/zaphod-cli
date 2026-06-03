@@ -59,7 +59,13 @@ pub fn run(cli: Cli) -> Result<(), AppError> {
             branch,
             side,
         } => claim_current_scope(json, agent, pair, branch, side),
-        CliCommand::Heartbeat { json, agent, pair } => heartbeat_claim(json, agent, pair),
+        CliCommand::Heartbeat {
+            json,
+            agent,
+            pair,
+            branch,
+            side,
+        } => heartbeat_claim(json, agent, pair, branch, side),
         CliCommand::Claims {
             json,
             agent,
@@ -727,12 +733,43 @@ fn claim_current_scope(
     Ok(())
 }
 
-fn heartbeat_claim(json: bool, agent: String, pair_name: String) -> Result<(), AppError> {
+fn heartbeat_claim(
+    json: bool,
+    agent: String,
+    pair_name: String,
+    expected_branch: Option<String>,
+    expected_side: Option<PairSide>,
+) -> Result<(), AppError> {
     validate_agent_name(&agent)?;
     let repository = GitRepository::discover(".")?;
     let store = ClaimStore::for_repository(&repository);
     let _lock = store.lock()?;
     let context = load_status_context(&pair_name)?;
+    let expectation = build_branch_expectation_report(&context, expected_branch, expected_side);
+    let expectation_error = expectation.as_ref().and_then(|expectation| {
+        (!expectation.ok).then(|| AppError::AssertFailed {
+            failures: expectation.failures.clone(),
+        })
+    });
+
+    if let Some(error) = expectation_error {
+        let report = ClaimOperationReport {
+            ok: false,
+            status: "refused",
+            repository_root: context.repository.root().display().to_string(),
+            claims_path: store.path().display().to_string(),
+            agent,
+            pair: pair_name,
+            branch: context.status.current,
+            claim: None,
+            conflict: None,
+            expectation,
+            refusal_reasons: Vec::new(),
+        };
+        print_claim_operation_report(&report, json)?;
+        return Err(error);
+    }
+
     let mut claims = store.load()?;
 
     if let Some(conflict) =
@@ -749,7 +786,7 @@ fn heartbeat_claim(json: bool, agent: String, pair_name: String) -> Result<(), A
             branch: context.status.current,
             claim: None,
             conflict: Some(conflict.clone()),
-            expectation: None,
+            expectation,
             refusal_reasons: Vec::new(),
         };
         print_claim_operation_report(&report, json)?;
@@ -787,7 +824,7 @@ fn heartbeat_claim(json: bool, agent: String, pair_name: String) -> Result<(), A
         branch: claim.branch.clone(),
         claim: Some(claim),
         conflict: None,
-        expectation: None,
+        expectation,
         refusal_reasons: Vec::new(),
     };
     print_claim_operation_report(&report, json)?;

@@ -162,6 +162,14 @@ pub enum CliCommand {
         /// Pair name for the claim.
         #[arg(long, default_value = "default")]
         pair: String,
+
+        /// Branch name expected as the current branch before refreshing the claim.
+        #[arg(long)]
+        branch: Option<String>,
+
+        /// Pair side expected as the current branch before refreshing the claim.
+        #[arg(long)]
+        side: Option<PairSide>,
     },
 
     /// List active agent session claims.
@@ -620,6 +628,33 @@ mod tests {
                 json: true,
                 agent: "codex".to_owned(),
                 pair: "api".to_owned(),
+                branch: None,
+                side: None,
+            }
+        );
+    }
+
+    #[test]
+    fn parses_heartbeat_expectation_options() {
+        let cli = Cli::parse_from([
+            "zaphod",
+            "heartbeat",
+            "--agent",
+            "codex",
+            "--branch",
+            "feature/api",
+            "--side",
+            "left",
+        ]);
+
+        assert_eq!(
+            cli.command,
+            CliCommand::Heartbeat {
+                json: false,
+                agent: "codex".to_owned(),
+                pair: "default".to_owned(),
+                branch: Some("feature/api".to_owned()),
+                side: Some(PairSide::Left),
             }
         );
     }
