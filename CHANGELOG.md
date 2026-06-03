@@ -7,6 +7,11 @@ and this project uses semantic versioning for published releases.
 
 ## Unreleased
 
+### Added
+
+- `claim --branch` and `claim --side` for guarded claim writes that first verify
+  the current branch or pair side.
+
 ## 0.1.17 - 2026-06-01
 
 ### Added
