@@ -81,6 +81,35 @@ fn handoff_rejects_invalid_stale_claim_window() {
 }
 
 #[test]
+fn handoff_json_refuses_wrong_expected_side() {
+    let dir = TestDir::new("zaphod-cli-safety");
+    init_repo_with_pair_branches(dir.path());
+    let pair = zaphod(dir.path(), ["pair", "feature/api", "feature/ui"]);
+    assert_success(&pair);
+
+    let output = zaphod(dir.path(), ["handoff", "--json", "--side", "right"]);
+
+    assert!(!output.status.success());
+    assert_eq!(output.status.code(), Some(2));
+    let report: serde_json::Value = serde_json::from_slice(&output.stdout).expect("handoff json");
+    assert_eq!(report["ok"], false);
+    assert_eq!(report["current_branch"], "feature/api");
+    assert_eq!(report["pair"]["current"], "feature/api");
+    assert_eq!(report["expectation"]["ok"], false);
+    assert_eq!(report["expectation"]["expected_side"], "right");
+    assert_eq!(report["expectation"]["current_side"], "left");
+    assert_eq!(
+        report["expectation"]["failures"][0],
+        "current branch 'feature/api' is not the right side of pair 'default'"
+    );
+    assert_eq!(report["errors"][0]["kind"], "assert_failed");
+    assert_stderr_contains(
+        &output,
+        "current branch 'feature/api' is not the right side of pair 'default'",
+    );
+}
+
+#[test]
 fn init_rejects_invalid_or_missing_other_branch() {
     let dir = TestDir::new("zaphod-cli-safety");
     init_repo_with_pair_branches(dir.path());

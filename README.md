@@ -64,7 +64,7 @@ zaphod preflight --agent codex --stale-after 2h --json
 zaphod claim --agent codex --pair api --side left --json
 zaphod heartbeat --agent codex --pair api --side left --json
 zaphod assert --pair api --side left --json
-zaphod handoff --agent codex --stale-after 2h --json
+zaphod handoff --agent codex --side left --stale-after 2h --json
 zaphod status --json
 zaphod switch --dry-run --json
 zaphod doctor --json
@@ -118,7 +118,9 @@ fresh sessions stay visible without allowing silent takeover of another claim.
 For handoffs between agents or terminals, `zaphod handoff --json` captures the
 current branch, selected pair status, active claims, and claim readiness in one
 read-only report. With `--stale-after`, the handoff can also mark old claim
-conflicts as stale without removing them.
+conflicts as stale without removing them. With `--branch` or `--side`, the
+handoff can also prove the snapshot was captured from the expected branch or
+pair side before another agent trusts it.
 
 ## Safety Model
 
@@ -494,6 +496,7 @@ from:
 ```sh
 zaphod handoff
 zaphod handoff --json
+zaphod handoff --branch feature/api --side left --json
 zaphod handoff --name api --agent codex --json
 zaphod handoff --name api --agent codex --stale-after 2h --json
 ```
@@ -507,6 +510,12 @@ Use `--stale-after` with `--agent` when the receiving agent needs to know
 whether a claim conflict looks abandoned. The value uses the same duration
 format as other stale-claim checks: a positive number followed by `s`, `m`, `h`,
 or `d`.
+
+Use `--branch` and `--side` when the receiving agent should only trust a
+handoff captured from a specific branch or pair side. The JSON report includes
+an `expectation` section when either option is used. If the expectation fails,
+`handoff` exits non-zero and reports the mismatch without creating claims,
+removing claims, switching branches, or editing Git state.
 
 When `--agent` is present, the handoff claim-readiness section includes the
 same metadata lock state as `preflight --agent`.

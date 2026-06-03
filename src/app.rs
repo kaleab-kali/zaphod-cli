@@ -91,9 +91,11 @@ pub fn run(cli: Cli) -> Result<(), AppError> {
         CliCommand::Handoff {
             json,
             name,
+            branch,
+            side,
             agent,
             stale_after,
-        } => show_handoff(json, name, agent, stale_after),
+        } => show_handoff(json, name, branch, side, agent, stale_after),
         CliCommand::Doctor { json, stale_after } => run_doctor(json, stale_after),
         CliCommand::Completions { shell } => generate_completions(shell),
     }
@@ -489,19 +491,35 @@ fn build_branch_expectation_report(
     expected_branch: Option<String>,
     expected_side: Option<PairSide>,
 ) -> Option<BranchExpectationReport> {
+    build_branch_expectation_report_for_pair(
+        &context.pair,
+        &context.status.pair,
+        &context.status.current,
+        expected_branch,
+        expected_side,
+    )
+}
+
+fn build_branch_expectation_report_for_pair(
+    pair: &BranchPair,
+    pair_name: &str,
+    current_branch: &str,
+    expected_branch: Option<String>,
+    expected_side: Option<PairSide>,
+) -> Option<BranchExpectationReport> {
     if expected_branch.is_none() && expected_side.is_none() {
         return None;
     }
 
-    let current_side = pair_side_for_branch(&context.pair, &context.status.current);
+    let current_side = pair_side_for_branch(pair, current_branch);
     let mut failures = Vec::new();
 
     if let Some(expected_branch) = &expected_branch
-        && context.status.current != *expected_branch
+        && current_branch != expected_branch.as_str()
     {
         failures.push(format!(
             "current branch '{}' did not match expected branch '{}'",
-            context.status.current, expected_branch
+            current_branch, expected_branch
         ));
     }
 
@@ -510,9 +528,9 @@ fn build_branch_expectation_report(
     {
         failures.push(format!(
             "current branch '{}' is not the {} side of pair '{}'",
-            context.status.current,
+            current_branch,
             pair_side_name(expected_side),
-            context.status.pair
+            pair_name
         ));
     }
 
@@ -1053,6 +1071,8 @@ fn unclaim_current_scope(
 fn show_handoff(
     json: bool,
     pair_name: String,
+    expected_branch: Option<String>,
+    expected_side: Option<PairSide>,
     agent: Option<String>,
     stale_after: Option<String>,
 ) -> Result<(), AppError> {
@@ -1073,6 +1093,7 @@ fn show_handoff(
         current_branch: None,
         worktree: None,
         git_state: None,
+        expectation: None,
         pair: None,
         claims: Vec::new(),
         claim: None,
@@ -1139,9 +1160,30 @@ fn show_handoff(
         Err(error) => return finish_handoff_with_error(report, error, json),
     };
 
+    let expectation = build_branch_expectation_report_for_pair(
+        pair,
+        &pair_report.pair,
+        &pair_report.current,
+        expected_branch,
+        expected_side,
+    );
+    let expectation_error = expectation.as_ref().and_then(|expectation| {
+        (!expectation.ok).then(|| AppError::AssertFailed {
+            failures: expectation.failures.clone(),
+        })
+    });
+    let claim_pair = pair_report.pair.clone();
+    let claim_branch = pair_report.current.clone();
+    report.expectation = expectation;
+    report.pair = Some(pair_report);
+
+    if let Some(error) = expectation_error {
+        return finish_handoff_with_error(report, error, json);
+    }
+
     if let Some(agent) = report.requested_agent.clone() {
         let conflict = claims
-            .conflict_for_scope(&agent, &pair_report.pair, &pair_report.current)
+            .conflict_for_scope(&agent, &claim_pair, &claim_branch)
             .cloned();
         let now_unix = if stale_after_seconds.is_some() && conflict.is_some() {
             Some(current_unix_timestamp()?)
@@ -1169,7 +1211,6 @@ fn show_handoff(
         });
     }
 
-    report.pair = Some(pair_report);
     report.ok = true;
     print_handoff_report(&report, json)
 }
@@ -2099,6 +2140,10 @@ fn print_handoff_report(report: &HandoffReport, json: bool) -> Result<(), AppErr
         }
     }
 
+    if let Some(expectation) = &report.expectation {
+        print_branch_expectation_report(expectation);
+    }
+
     if let Some(claim) = &report.claim {
         if claim.claim_allowed {
             println!("Claim: allowed for {}", claim.requested_agent);
@@ -2361,6 +2406,7 @@ struct HandoffReport {
     current_branch: Option<String>,
     worktree: Option<WorktreeStatus>,
     git_state: Option<GitState>,
+    expectation: Option<BranchExpectationReport>,
     pair: Option<PairStatusReport>,
     claims: Vec<AgentClaim>,
     claim: Option<PreflightClaimReport>,
