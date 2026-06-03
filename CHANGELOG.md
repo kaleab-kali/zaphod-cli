@@ -7,6 +7,8 @@ and this project uses semantic versioning for published releases.
 
 ## Unreleased
 
+## 0.1.22 - 2026-06-03
+
 ### Added
 
 - `prune-claims --current` for dry-run-by-default cleanup scoped to the current
