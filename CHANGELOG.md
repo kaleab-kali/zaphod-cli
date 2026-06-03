@@ -7,6 +7,11 @@ and this project uses semantic versioning for published releases.
 
 ## Unreleased
 
+### Added
+
+- `handoff --branch` and `handoff --side` for guarded agent handoff snapshots
+  that refuse when the current branch or pair side is not the expected one.
+
 ## 0.1.19 - 2026-06-03
 
 ### Added
