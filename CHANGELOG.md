@@ -7,6 +7,8 @@ and this project uses semantic versioning for published releases.
 
 ## Unreleased
 
+## 0.1.18 - 2026-06-03
+
 ### Added
 
 - `claim --branch` and `claim --side` for guarded claim writes that first verify
