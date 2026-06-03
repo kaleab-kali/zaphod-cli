@@ -217,6 +217,10 @@ pub enum CliCommand {
         #[arg(long)]
         branch: Option<String>,
 
+        /// Filter claims to the current Git branch.
+        #[arg(long, conflicts_with = "branch")]
+        current: bool,
+
         /// Select claims older than this duration, for example 30m, 2h, or 1d.
         #[arg(long, required_unless_present = "orphaned")]
         stale_after: Option<String>,
@@ -750,6 +754,7 @@ mod tests {
                 agent: Some("codex".to_owned()),
                 pair: Some("api".to_owned()),
                 branch: Some("feature/api".to_owned()),
+                current: false,
                 stale_after: Some("2h".to_owned()),
                 orphaned: false,
                 apply: true,
@@ -768,11 +773,54 @@ mod tests {
                 agent: None,
                 pair: None,
                 branch: None,
+                current: false,
                 stale_after: None,
                 orphaned: true,
                 apply: false,
             }
         );
+    }
+
+    #[test]
+    fn parses_prune_claims_current_filter() {
+        let cli = Cli::parse_from([
+            "zaphod",
+            "prune-claims",
+            "--json",
+            "--current",
+            "--stale-after",
+            "2h",
+        ]);
+
+        assert_eq!(
+            cli.command,
+            CliCommand::PruneClaims {
+                json: true,
+                agent: None,
+                pair: None,
+                branch: None,
+                current: true,
+                stale_after: Some("2h".to_owned()),
+                orphaned: false,
+                apply: false,
+            }
+        );
+    }
+
+    #[test]
+    fn prune_claims_current_conflicts_with_branch_filter() {
+        let error = Cli::try_parse_from([
+            "zaphod",
+            "prune-claims",
+            "--current",
+            "--branch",
+            "feature/api",
+            "--stale-after",
+            "2h",
+        ])
+        .expect_err("reject current and branch filters together");
+
+        assert_eq!(error.kind(), clap::error::ErrorKind::ArgumentConflict);
     }
 
     #[test]

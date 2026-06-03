@@ -79,10 +79,20 @@ pub fn run(cli: Cli) -> Result<(), AppError> {
             agent,
             pair,
             branch,
+            current,
             stale_after,
             orphaned,
             apply,
-        } => prune_claims(json, agent, pair, branch, stale_after, orphaned, apply),
+        } => prune_claims(PruneClaimsOptions {
+            json,
+            agent,
+            pair,
+            branch,
+            current,
+            stale_after,
+            orphaned,
+            apply,
+        }),
         CliCommand::Unclaim {
             json,
             agent,
@@ -924,15 +934,29 @@ fn list_claims(
     Ok(())
 }
 
-fn prune_claims(
+struct PruneClaimsOptions {
     json: bool,
     agent: Option<String>,
     pair: Option<String>,
     branch: Option<String>,
+    current: bool,
     stale_after: Option<String>,
     orphaned: bool,
     apply: bool,
-) -> Result<(), AppError> {
+}
+
+fn prune_claims(options: PruneClaimsOptions) -> Result<(), AppError> {
+    let PruneClaimsOptions {
+        json,
+        agent,
+        pair,
+        branch,
+        current,
+        stale_after,
+        orphaned,
+        apply,
+    } = options;
+
     if let Some(agent) = &agent {
         validate_agent_name(agent)?;
     }
@@ -950,6 +974,11 @@ fn prune_claims(
     };
 
     let repository = GitRepository::discover(".")?;
+    let branch = if current {
+        Some(repository.current_branch()?)
+    } else {
+        branch
+    };
     if let Some(branch) = &branch {
         ensure_branch_name_is_valid(&repository, branch)?;
     }
@@ -1018,7 +1047,7 @@ fn prune_claims(
             agent,
             pair,
             branch,
-            current: false,
+            current,
             stale_after_seconds,
         },
         orphaned,
