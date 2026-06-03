@@ -496,6 +496,36 @@ fn claim_json_reports_dirty_refusal() {
 }
 
 #[test]
+fn claim_json_refuses_wrong_expected_side_without_writing_claim() {
+    let dir = TestDir::new("zaphod-cli-safety");
+    init_repo_with_pair_branches(dir.path());
+    let pair = zaphod(dir.path(), ["pair", "feature/api", "feature/ui"]);
+    assert_success(&pair);
+
+    let output = zaphod(
+        dir.path(),
+        ["claim", "--json", "--agent", "codex", "--side", "right"],
+    );
+
+    assert!(!output.status.success());
+    assert_eq!(output.status.code(), Some(2));
+    let report: serde_json::Value = serde_json::from_slice(&output.stdout).expect("claim json");
+    assert_eq!(report["ok"], false);
+    assert_eq!(report["status"], "refused");
+    assert_eq!(report["expectation"]["ok"], false);
+    assert_eq!(report["expectation"]["expected_side"], "right");
+    assert_eq!(report["expectation"]["current_side"], "left");
+    assert!(report["claim"].is_null());
+    assert!(report["conflict"].is_null());
+    assert_stderr_contains(&output, "assertion failed:");
+
+    let claims = zaphod(dir.path(), ["claims", "--json"]);
+    assert_success(&claims);
+    let report: serde_json::Value = serde_json::from_slice(&claims.stdout).expect("claims json");
+    assert_eq!(report["claims"], json!([]));
+}
+
+#[test]
 fn claim_rejects_invalid_agent_name() {
     let dir = TestDir::new("zaphod-cli-safety");
     init_repo_with_pair_branches(dir.path());

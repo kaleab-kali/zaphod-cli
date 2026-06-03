@@ -61,7 +61,7 @@ Coding agents can use Zaphod as a preflight gate:
 zaphod preflight --agent codex --json
 zaphod preflight --agent codex --branch feature/api --side left --json
 zaphod preflight --agent codex --stale-after 2h --json
-zaphod claim --agent codex --pair api --json
+zaphod claim --agent codex --pair api --side left --json
 zaphod heartbeat --agent codex --pair api --json
 zaphod assert --pair api --side left --json
 zaphod handoff --agent codex --stale-after 2h --json
@@ -398,6 +398,7 @@ Claim the current pair and branch for an agent session:
 ```sh
 zaphod claim --agent codex --pair api
 zaphod claim --agent codex --pair api --json
+zaphod claim --agent codex --pair api --side left --json
 ```
 
 `claim` writes repo-local metadata under `.git/zaphod/claims.toml`. It refuses
@@ -407,6 +408,10 @@ is dirty, Git is mid-merge or mid-rebase, the current branch is outside the
 pair, or the paired target branch is missing.
 
 Agent names may contain only letters, numbers, `.`, `_`, and `-`.
+
+Use `--branch` or `--side` when the claim should only be written from a specific
+branch or pair side. This lets an agent combine "am I in the right place?" and
+"claim this work" into one guarded command.
 
 ### `zaphod heartbeat`
 

@@ -52,7 +52,13 @@ pub fn run(cli: Cli) -> Result<(), AppError> {
             branch,
             side,
         } => assert_repository_state(json, pair, branch, side),
-        CliCommand::Claim { json, agent, pair } => claim_current_scope(json, agent, pair),
+        CliCommand::Claim {
+            json,
+            agent,
+            pair,
+            branch,
+            side,
+        } => claim_current_scope(json, agent, pair, branch, side),
         CliCommand::Heartbeat { json, agent, pair } => heartbeat_claim(json, agent, pair),
         CliCommand::Claims {
             json,
@@ -369,7 +375,7 @@ fn run_preflight(
         Ok(context) => {
             let mut report = PreflightReport::from_status_context(&context);
             let expectation_error = if let Some(expectation) =
-                build_preflight_expectation_report(&context, expected_branch, expected_side)
+                build_branch_expectation_report(&context, expected_branch, expected_side)
             {
                 report.ready = report.ready && expectation.ok;
                 let error = (!expectation.ok).then(|| AppError::AssertFailed {
@@ -472,11 +478,11 @@ fn build_preflight_claim_report(
     })
 }
 
-fn build_preflight_expectation_report(
+fn build_branch_expectation_report(
     context: &StatusContext,
     expected_branch: Option<String>,
     expected_side: Option<PairSide>,
-) -> Option<PreflightExpectationReport> {
+) -> Option<BranchExpectationReport> {
     if expected_branch.is_none() && expected_side.is_none() {
         return None;
     }
@@ -504,7 +510,7 @@ fn build_preflight_expectation_report(
         ));
     }
 
-    Some(PreflightExpectationReport {
+    Some(BranchExpectationReport {
         ok: failures.is_empty(),
         expected_branch,
         expected_side: expected_side.map(pair_side_name),
@@ -611,12 +617,24 @@ fn assert_repository_state(
     }
 }
 
-fn claim_current_scope(json: bool, agent: String, pair_name: String) -> Result<(), AppError> {
+fn claim_current_scope(
+    json: bool,
+    agent: String,
+    pair_name: String,
+    expected_branch: Option<String>,
+    expected_side: Option<PairSide>,
+) -> Result<(), AppError> {
     validate_agent_name(&agent)?;
     let repository = GitRepository::discover(".")?;
     let store = ClaimStore::for_repository(&repository);
     let _lock = store.lock()?;
     let context = load_status_context(&pair_name)?;
+    let expectation = build_branch_expectation_report(&context, expected_branch, expected_side);
+    let expectation_error = expectation.as_ref().and_then(|expectation| {
+        (!expectation.ok).then(|| AppError::AssertFailed {
+            failures: expectation.failures.clone(),
+        })
+    });
 
     if !context.status.switch_allowed {
         let report = ClaimOperationReport {
@@ -629,12 +647,31 @@ fn claim_current_scope(json: bool, agent: String, pair_name: String) -> Result<(
             branch: context.status.current,
             claim: None,
             conflict: None,
+            expectation,
             refusal_reasons: context.status.refusal_reasons.clone(),
         };
         print_claim_operation_report(&report, json)?;
         return Err(AppError::PreflightRefused {
             reasons: context.status.refusal_reasons,
         });
+    }
+
+    if let Some(error) = expectation_error {
+        let report = ClaimOperationReport {
+            ok: false,
+            status: "refused",
+            repository_root: context.repository.root().display().to_string(),
+            claims_path: store.path().display().to_string(),
+            agent,
+            pair: pair_name,
+            branch: context.status.current,
+            claim: None,
+            conflict: None,
+            expectation,
+            refusal_reasons: Vec::new(),
+        };
+        print_claim_operation_report(&report, json)?;
+        return Err(error);
     }
 
     let mut claims = store.load()?;
@@ -652,6 +689,7 @@ fn claim_current_scope(json: bool, agent: String, pair_name: String) -> Result<(
             branch: context.status.current,
             claim: None,
             conflict: Some(conflict.clone()),
+            expectation,
             refusal_reasons: Vec::new(),
         };
         print_claim_operation_report(&report, json)?;
@@ -681,6 +719,7 @@ fn claim_current_scope(json: bool, agent: String, pair_name: String) -> Result<(
         branch: claim.branch.clone(),
         claim: Some(claim),
         conflict: None,
+        expectation,
         refusal_reasons: Vec::new(),
     };
     print_claim_operation_report(&report, json)?;
@@ -710,6 +749,7 @@ fn heartbeat_claim(json: bool, agent: String, pair_name: String) -> Result<(), A
             branch: context.status.current,
             claim: None,
             conflict: Some(conflict.clone()),
+            expectation: None,
             refusal_reasons: Vec::new(),
         };
         print_claim_operation_report(&report, json)?;
@@ -747,6 +787,7 @@ fn heartbeat_claim(json: bool, agent: String, pair_name: String) -> Result<(), A
         branch: claim.branch.clone(),
         claim: Some(claim),
         conflict: None,
+        expectation: None,
         refusal_reasons: Vec::new(),
     };
     print_claim_operation_report(&report, json)?;
@@ -964,6 +1005,7 @@ fn unclaim_current_scope(
         branch,
         claim: Some(removed),
         conflict: None,
+        expectation: None,
         refusal_reasons: Vec::new(),
     };
     print_claim_operation_report(&report, json)?;
@@ -1746,25 +1788,7 @@ fn print_preflight_report(report: &PreflightReport) {
     }
 
     if let Some(expectation) = &report.expectation {
-        println!(
-            "Expectation: {}",
-            if expectation.ok { "passed" } else { "failed" }
-        );
-        if let Some(expected_branch) = &expectation.expected_branch {
-            println!("Expected branch: {expected_branch}");
-        }
-        if let Some(expected_side) = expectation.expected_side {
-            println!("Expected side: {expected_side}");
-        }
-        if let Some(current_side) = expectation.current_side {
-            println!("Current side: {current_side}");
-        }
-        if !expectation.failures.is_empty() {
-            println!("Expectation failures:");
-            for failure in &expectation.failures {
-                println!("- {failure}");
-            }
-        }
+        print_branch_expectation_report(expectation);
     }
 
     if let Some(claim) = &report.claim {
@@ -1838,6 +1862,28 @@ fn print_assert_report(report: &AssertReport) {
     }
 }
 
+fn print_branch_expectation_report(expectation: &BranchExpectationReport) {
+    println!(
+        "Expectation: {}",
+        if expectation.ok { "passed" } else { "failed" }
+    );
+    if let Some(expected_branch) = &expectation.expected_branch {
+        println!("Expected branch: {expected_branch}");
+    }
+    if let Some(expected_side) = expectation.expected_side {
+        println!("Expected side: {expected_side}");
+    }
+    if let Some(current_side) = expectation.current_side {
+        println!("Current side: {current_side}");
+    }
+    if !expectation.failures.is_empty() {
+        println!("Expectation failures:");
+        for failure in &expectation.failures {
+            println!("- {failure}");
+        }
+    }
+}
+
 fn print_claim_operation_report(report: &ClaimOperationReport, json: bool) -> Result<(), AppError> {
     if json {
         println!("{}", serde_json::to_string_pretty(report)?);
@@ -1853,6 +1899,10 @@ fn print_claim_operation_report(report: &ClaimOperationReport, json: bool) -> Re
 
     if let Some(conflict) = &report.conflict {
         println!("Conflict: claimed by {}", conflict.agent);
+    }
+
+    if let Some(expectation) = &report.expectation {
+        print_branch_expectation_report(expectation);
     }
 
     if !report.refusal_reasons.is_empty() {
@@ -2130,7 +2180,7 @@ struct PreflightReport {
     git_state: Option<GitState>,
     switch_allowed: bool,
     refusal_reasons: Vec<RefusalReason>,
-    expectation: Option<PreflightExpectationReport>,
+    expectation: Option<BranchExpectationReport>,
     claim: Option<PreflightClaimReport>,
     error: Option<PreflightErrorReport>,
 }
@@ -2183,7 +2233,7 @@ struct PreflightErrorReport {
 }
 
 #[derive(Debug, Serialize)]
-struct PreflightExpectationReport {
+struct BranchExpectationReport {
     ok: bool,
     expected_branch: Option<String>,
     expected_side: Option<&'static str>,
@@ -2232,6 +2282,7 @@ struct ClaimOperationReport {
     branch: String,
     claim: Option<AgentClaim>,
     conflict: Option<AgentClaim>,
+    expectation: Option<BranchExpectationReport>,
     refusal_reasons: Vec<RefusalReason>,
 }
 

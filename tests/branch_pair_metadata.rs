@@ -529,6 +529,40 @@ fn claim_json_records_current_pair_and_branch() {
 }
 
 #[test]
+fn claim_json_records_expected_branch_and_side() {
+    let dir = TestDir::new("zaphod-cli-metadata");
+    init_repo_with_pair_branches(dir.path());
+    let pair = zaphod(dir.path(), ["pair", "feature/api", "feature/ui"]);
+    assert_success(&pair);
+
+    let output = zaphod(
+        dir.path(),
+        [
+            "claim",
+            "--json",
+            "--agent",
+            "codex",
+            "--branch",
+            "feature/api",
+            "--side",
+            "left",
+        ],
+    );
+
+    assert_success(&output);
+    let report: serde_json::Value = serde_json::from_slice(&output.stdout).expect("claim json");
+    assert_eq!(report["ok"], true);
+    assert_eq!(report["status"], "claimed");
+    assert_eq!(report["expectation"]["ok"], true);
+    assert_eq!(report["expectation"]["expected_branch"], "feature/api");
+    assert_eq!(report["expectation"]["expected_side"], "left");
+    assert_eq!(report["expectation"]["current_side"], "left");
+    assert_eq!(report["expectation"]["failures"], json!([]));
+    assert_eq!(report["claim"]["agent"], "codex");
+    assert_eq!(report["claim"]["branch"], "feature/api");
+}
+
+#[test]
 fn heartbeat_json_refreshes_existing_claim_while_dirty() {
     let dir = TestDir::new("zaphod-cli-metadata");
     init_repo_with_pair_branches(dir.path());
