@@ -7,6 +7,11 @@ and this project uses semantic versioning for published releases.
 
 ## Unreleased
 
+### Added
+
+- `prune-claims --current` for dry-run-by-default cleanup scoped to the current
+  Git branch.
+
 ## 0.1.21 - 2026-06-03
 
 ### Added
