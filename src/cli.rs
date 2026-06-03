@@ -251,6 +251,10 @@ pub enum CliCommand {
         /// Branch name for the claim. Defaults to the current branch.
         #[arg(long)]
         branch: Option<String>,
+
+        /// Pair side for the claim. Defaults to the current branch when omitted.
+        #[arg(long, conflicts_with = "branch")]
+        side: Option<PairSide>,
     },
 
     /// Show a read-only handoff snapshot for agent continuation.
@@ -852,8 +856,44 @@ mod tests {
                 agent: "codex".to_owned(),
                 pair: "default".to_owned(),
                 branch: Some("feature/api".to_owned()),
+                side: None,
             }
         );
+    }
+
+    #[test]
+    fn parses_unclaim_side_target() {
+        let cli = Cli::parse_from([
+            "zaphod", "unclaim", "--agent", "codex", "--pair", "api", "--side", "left",
+        ]);
+
+        assert_eq!(
+            cli.command,
+            CliCommand::Unclaim {
+                json: false,
+                agent: "codex".to_owned(),
+                pair: "api".to_owned(),
+                branch: None,
+                side: Some(PairSide::Left),
+            }
+        );
+    }
+
+    #[test]
+    fn unclaim_side_conflicts_with_branch_target() {
+        let error = Cli::try_parse_from([
+            "zaphod",
+            "unclaim",
+            "--agent",
+            "codex",
+            "--branch",
+            "feature/api",
+            "--side",
+            "left",
+        ])
+        .expect_err("reject side and branch targets together");
+
+        assert_eq!(error.kind(), clap::error::ErrorKind::ArgumentConflict);
     }
 
     #[test]

@@ -726,6 +726,23 @@ fn unclaim_rejects_invalid_branch_name() {
 }
 
 #[test]
+fn unclaim_side_reports_missing_pair() {
+    let dir = TestDir::new("zaphod-cli-safety");
+    init_repo_with_pair_branches(dir.path());
+
+    let output = zaphod(
+        dir.path(),
+        [
+            "unclaim", "--agent", "codex", "--pair", "missing", "--side", "left",
+        ],
+    );
+
+    assert!(!output.status.success());
+    assert_eq!(output.status.code(), Some(2));
+    assert_stderr_contains(&output, "pair 'missing' was not found");
+}
+
+#[test]
 fn switch_rejects_rebase_in_progress() {
     let dir = TestDir::new("zaphod-cli-safety");
     init_repo_with_pair_branches(dir.path());

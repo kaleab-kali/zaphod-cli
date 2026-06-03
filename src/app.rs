@@ -98,7 +98,8 @@ pub fn run(cli: Cli) -> Result<(), AppError> {
             agent,
             pair,
             branch,
-        } => unclaim_current_scope(json, agent, pair, branch),
+            side,
+        } => unclaim_current_scope(json, agent, pair, branch, side),
         CliCommand::Handoff {
             json,
             name,
@@ -1064,15 +1065,26 @@ fn unclaim_current_scope(
     agent: String,
     pair_name: String,
     branch: Option<String>,
+    side: Option<PairSide>,
 ) -> Result<(), AppError> {
     validate_agent_name(&agent)?;
     let repository = GitRepository::discover(".")?;
-    let branch = match branch {
-        Some(branch) => {
-            ensure_branch_name_is_valid(&repository, &branch)?;
-            branch
+    let branch = if let Some(branch) = branch {
+        ensure_branch_name_is_valid(&repository, &branch)?;
+        branch
+    } else if let Some(side) = side {
+        let pairs = MetadataStore::for_repository(&repository).load()?;
+        let pair = pairs
+            .get(&pair_name)
+            .ok_or_else(|| AppError::PairNotFound {
+                name: pair_name.clone(),
+            })?;
+        match side {
+            PairSide::Left => pair.left.clone(),
+            PairSide::Right => pair.right.clone(),
         }
-        None => repository.current_branch()?,
+    } else {
+        repository.current_branch()?
     };
     let store = ClaimStore::for_repository(&repository);
     let _lock = store.lock()?;

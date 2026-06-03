@@ -103,6 +103,7 @@ zaphod prune-claims --orphaned --json
 zaphod prune-claims --orphaned --apply
 zaphod unclaim --agent codex --pair search
 zaphod unclaim --agent codex --pair search --branch feature/api
+zaphod unclaim --agent codex --pair search --side left
 ```
 
 Claims are local metadata only. They do not lock Git, modify branches, or delete
@@ -484,11 +485,14 @@ Release an agent session claim for the current pair and branch:
 zaphod unclaim --agent codex --pair api
 zaphod unclaim --agent codex --pair api --json
 zaphod unclaim --agent codex --pair api --branch feature/api
+zaphod unclaim --agent codex --pair api --side left
 ```
 
 By default, `unclaim` releases the matching claim for the current branch. Use
-`--branch` to release a claim for another branch without switching to it. This
-is useful when an agent stopped early and left stale claim metadata behind.
+`--branch` to release a claim for another branch without switching to it. Use
+`--side` to release a claim by the left or right side of the named pair without
+scripting a pair-metadata lookup. This is useful when an agent stopped early
+and left stale claim metadata behind.
 
 `unclaim` only removes the matching claim metadata. It does not switch branches,
 clean files, or alter Git history.
