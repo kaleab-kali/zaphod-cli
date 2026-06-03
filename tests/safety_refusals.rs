@@ -473,6 +473,48 @@ fn heartbeat_reports_missing_claim() {
 }
 
 #[test]
+fn heartbeat_json_refuses_wrong_expected_side_without_refreshing_claim() {
+    let dir = TestDir::new("zaphod-cli-safety");
+    init_repo_with_pair_branches(dir.path());
+    let pair = zaphod(dir.path(), ["pair", "feature/api", "feature/ui"]);
+    assert_success(&pair);
+    let metadata_dir = dir.git_dir().join("zaphod");
+    fs::create_dir_all(&metadata_dir).expect("create zaphod metadata directory");
+    fs::write(
+        metadata_dir.join("claims.toml"),
+        r#"[[claims]]
+agent = "codex"
+pair = "default"
+branch = "feature/api"
+created_at_unix = 1
+"#,
+    )
+    .expect("write claim metadata");
+
+    let output = zaphod(
+        dir.path(),
+        ["heartbeat", "--json", "--agent", "codex", "--side", "right"],
+    );
+
+    assert!(!output.status.success());
+    assert_eq!(output.status.code(), Some(2));
+    let report: serde_json::Value = serde_json::from_slice(&output.stdout).expect("heartbeat json");
+    assert_eq!(report["ok"], false);
+    assert_eq!(report["status"], "refused");
+    assert_eq!(report["expectation"]["ok"], false);
+    assert_eq!(report["expectation"]["expected_side"], "right");
+    assert_eq!(report["expectation"]["current_side"], "left");
+    assert!(report["claim"].is_null());
+    assert!(report["conflict"].is_null());
+    assert_stderr_contains(&output, "assertion failed:");
+
+    let claims = zaphod(dir.path(), ["claims", "--json"]);
+    assert_success(&claims);
+    let report: serde_json::Value = serde_json::from_slice(&claims.stdout).expect("claims json");
+    assert_eq!(report["claims"][0]["created_at_unix"], 1);
+}
+
+#[test]
 fn claim_json_reports_dirty_refusal() {
     let dir = TestDir::new("zaphod-cli-safety");
     init_repo_with_pair_branches(dir.path());

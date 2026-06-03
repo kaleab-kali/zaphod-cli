@@ -7,6 +7,11 @@ and this project uses semantic versioning for published releases.
 
 ## Unreleased
 
+### Added
+
+- `heartbeat --branch` and `heartbeat --side` for guarded claim refreshes that
+  first verify the current branch or pair side.
+
 ## 0.1.18 - 2026-06-03
 
 ### Added
