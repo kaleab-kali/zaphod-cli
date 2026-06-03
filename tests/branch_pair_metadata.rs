@@ -683,6 +683,34 @@ fn claims_json_filters_by_agent_pair_and_branch() {
 }
 
 #[test]
+fn claims_json_filters_to_current_branch() {
+    let dir = TestDir::new("zaphod-cli-metadata");
+    init_repo_with_pair_branches(dir.path());
+    let pair = zaphod(dir.path(), ["pair", "feature/api", "feature/ui"]);
+    assert_success(&pair);
+    let api_claim = zaphod(dir.path(), ["claim", "--agent", "api-agent"]);
+    assert_success(&api_claim);
+    let switch = zaphod(dir.path(), ["switch"]);
+    assert_success(&switch);
+    assert_eq!(current_branch(dir.path()), "feature/ui");
+    let ui_claim = zaphod(dir.path(), ["claim", "--agent", "ui-agent"]);
+    assert_success(&ui_claim);
+    let switch = zaphod(dir.path(), ["switch"]);
+    assert_success(&switch);
+    assert_eq!(current_branch(dir.path()), "feature/api");
+
+    let claims = zaphod(dir.path(), ["claims", "--json", "--current"]);
+
+    assert_success(&claims);
+    let report: serde_json::Value = serde_json::from_slice(&claims.stdout).expect("claims json");
+    assert_eq!(report["filters"]["current"], true);
+    assert_eq!(report["filters"]["branch"], "feature/api");
+    assert_eq!(report["claims"].as_array().expect("claims").len(), 1);
+    assert_eq!(report["claims"][0]["agent"], "api-agent");
+    assert_eq!(report["claims"][0]["branch"], "feature/api");
+}
+
+#[test]
 fn claims_json_filters_stale_claims() {
     let dir = TestDir::new("zaphod-cli-metadata");
     init_repo_with_pair_branches(dir.path());

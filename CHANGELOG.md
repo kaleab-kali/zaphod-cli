@@ -7,6 +7,11 @@ and this project uses semantic versioning for published releases.
 
 ## Unreleased
 
+### Added
+
+- `claims --current` for filtering claim reports to the current Git branch
+  without scripting a separate branch lookup.
+
 ## 0.1.20 - 2026-06-03
 
 ### Added

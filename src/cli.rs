@@ -190,6 +190,10 @@ pub enum CliCommand {
         #[arg(long)]
         branch: Option<String>,
 
+        /// Filter claims to the current Git branch.
+        #[arg(long, conflicts_with = "branch")]
+        current: bool,
+
         /// Filter claims older than this duration, for example 30m, 2h, or 1d.
         #[arg(long)]
         stale_after: Option<String>,
@@ -690,9 +694,36 @@ mod tests {
                 agent: Some("codex".to_owned()),
                 pair: Some("api".to_owned()),
                 branch: Some("feature/api".to_owned()),
+                current: false,
                 stale_after: Some("2h".to_owned()),
             }
         );
+    }
+
+    #[test]
+    fn parses_claims_current_filter() {
+        let cli = Cli::parse_from(["zaphod", "claims", "--json", "--current"]);
+
+        assert_eq!(
+            cli.command,
+            CliCommand::Claims {
+                json: true,
+                agent: None,
+                pair: None,
+                branch: None,
+                current: true,
+                stale_after: None,
+            }
+        );
+    }
+
+    #[test]
+    fn claims_current_conflicts_with_branch_filter() {
+        let error =
+            Cli::try_parse_from(["zaphod", "claims", "--current", "--branch", "feature/api"])
+                .expect_err("reject current and branch filters together");
+
+        assert_eq!(error.kind(), clap::error::ErrorKind::ArgumentConflict);
     }
 
     #[test]

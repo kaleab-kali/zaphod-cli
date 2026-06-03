@@ -71,8 +71,9 @@ pub fn run(cli: Cli) -> Result<(), AppError> {
             agent,
             pair,
             branch,
+            current,
             stale_after,
-        } => list_claims(json, agent, pair, branch, stale_after),
+        } => list_claims(json, agent, pair, branch, current, stale_after),
         CliCommand::PruneClaims {
             json,
             agent,
@@ -855,6 +856,7 @@ fn list_claims(
     agent: Option<String>,
     pair: Option<String>,
     branch: Option<String>,
+    current: bool,
     stale_after: Option<String>,
 ) -> Result<(), AppError> {
     if let Some(agent) = &agent {
@@ -874,6 +876,11 @@ fn list_claims(
     };
 
     let repository = GitRepository::discover(".")?;
+    let branch = if current {
+        Some(repository.current_branch()?)
+    } else {
+        branch
+    };
     if let Some(branch) = &branch {
         ensure_branch_name_is_valid(&repository, branch)?;
     }
@@ -902,6 +909,7 @@ fn list_claims(
             agent,
             pair,
             branch,
+            current,
             stale_after_seconds,
         },
         claims: filtered_claims,
@@ -1010,6 +1018,7 @@ fn prune_claims(
             agent,
             pair,
             branch,
+            current: false,
             stale_after_seconds,
         },
         orphaned,
@@ -2003,13 +2012,15 @@ fn print_claims_report(report: &ClaimsReport) {
     if report.filters.agent.is_some()
         || report.filters.pair.is_some()
         || report.filters.branch.is_some()
+        || report.filters.current
         || report.filters.stale_after_seconds.is_some()
     {
         println!(
-            "Filters: agent={}, pair={}, branch={}, stale_after={}",
+            "Filters: agent={}, pair={}, branch={}, current={}, stale_after={}",
             report.filters.agent.as_deref().unwrap_or("*"),
             report.filters.pair.as_deref().unwrap_or("*"),
             report.filters.branch.as_deref().unwrap_or("*"),
+            report.filters.current,
             report
                 .filters
                 .stale_after_seconds
@@ -2393,6 +2404,7 @@ struct ClaimsFilterReport {
     agent: Option<String>,
     pair: Option<String>,
     branch: Option<String>,
+    current: bool,
     stale_after_seconds: Option<u64>,
 }
 
