@@ -7,6 +7,8 @@ and this project uses semantic versioning for published releases.
 
 ## Unreleased
 
+## 0.1.20 - 2026-06-03
+
 ### Added
 
 - `handoff --branch` and `handoff --side` for guarded agent handoff snapshots
