@@ -60,6 +60,7 @@ Coding agents can use Zaphod as a preflight gate:
 ```sh
 zaphod preflight --agent codex --json
 zaphod preflight --agent codex --branch feature/api --side left --json
+zaphod preflight --agent codex --require-claim --json
 zaphod preflight --agent codex --stale-after 2h --json
 zaphod claim --agent codex --pair api --side left --json
 zaphod claim --agent codex --pair api --stale-after 2h --json
@@ -96,6 +97,7 @@ claims add a lightweight coordination layer:
 zaphod claim --agent codex --pair search --json
 zaphod claim --agent codex --pair search --stale-after 2h --json
 # work on the branch
+zaphod preflight --agent codex --require-claim --json
 zaphod heartbeat --agent codex --pair search --json
 zaphod heartbeat --agent codex --pair search --stale-after 2h --json
 zaphod claims --current --json
@@ -353,6 +355,7 @@ Check whether the current repository is ready for paired-branch work:
 zaphod preflight --json
 zaphod preflight --agent codex --json
 zaphod preflight --branch feature/api --side left --json
+zaphod preflight --agent codex --require-claim --json
 zaphod preflight --agent codex --stale-after 2h --json
 ```
 
@@ -364,6 +367,11 @@ error when the repository is not ready.
 Use `--agent` to check whether another agent has already claimed the current
 pair and branch. This does not create or remove a claim; it only reports whether
 claiming would be allowed.
+
+Use `--require-claim` with `--agent` when an agent is resuming work and must
+prove it already owns the current pair and branch claim. This is read-only: it
+does not refresh the claim timestamp. JSON reports include `claim_required`,
+`claim_owned`, and `owned_claim` fields.
 
 Use `--branch` or `--side` when automation must prove it is about to edit the
 intended branch before doing any work:

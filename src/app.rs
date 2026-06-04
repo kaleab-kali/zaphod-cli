@@ -44,8 +44,9 @@ pub fn run(cli: Cli) -> Result<(), AppError> {
             branch,
             side,
             agent,
+            require_claim,
             stale_after,
-        } => run_preflight(&name, json, branch, side, agent, stale_after),
+        } => run_preflight(&name, json, branch, side, agent, require_claim, stale_after),
         CliCommand::Assert {
             json,
             pair,
@@ -396,6 +397,7 @@ fn run_preflight(
     expected_branch: Option<String>,
     expected_side: Option<PairSide>,
     agent: Option<String>,
+    require_claim: bool,
     stale_after: Option<String>,
 ) -> Result<(), AppError> {
     if let Some(agent) = &agent {
@@ -422,9 +424,14 @@ fn run_preflight(
                 None
             };
             let mut claim_blocked = None;
+            let mut claim_required = None;
             let claim_conflict = if let Some(agent) = agent {
-                let claim_report =
-                    build_preflight_claim_report(&context, agent, stale_after_seconds)?;
+                let claim_report = build_preflight_claim_report(
+                    &context,
+                    agent,
+                    require_claim,
+                    stale_after_seconds,
+                )?;
                 let conflict = claim_report.conflict.clone();
                 if conflict.is_none() && !claim_report.metadata_lock.ok {
                     claim_blocked = Some(AppError::ClaimBlocked {
@@ -434,7 +441,16 @@ fn run_preflight(
                         reason: metadata_lock_block_reason(&claim_report.metadata_lock),
                     });
                 }
-                report.ready = report.ready && claim_report.claim_allowed;
+                if require_claim && conflict.is_none() && !claim_report.claim_owned {
+                    claim_required = Some(AppError::ClaimRequired {
+                        agent: claim_report.requested_agent.clone(),
+                        pair: context.status.pair.clone(),
+                        branch: context.status.current.clone(),
+                    });
+                }
+                report.ready = report.ready
+                    && claim_report.claim_allowed
+                    && (!require_claim || claim_report.claim_owned);
                 report.claim = Some(claim_report);
                 conflict
             } else {
@@ -454,6 +470,8 @@ fn run_preflight(
                     branch: conflict.branch,
                 })
             } else if let Some(error) = claim_blocked {
+                Err(error)
+            } else if let Some(error) = claim_required {
                 Err(error)
             } else if !context.status.switch_allowed {
                 Err(AppError::PreflightRefused {
@@ -480,6 +498,7 @@ fn run_preflight(
 fn build_preflight_claim_report(
     context: &StatusContext,
     agent: String,
+    claim_required: bool,
     stale_after_seconds: Option<u64>,
 ) -> Result<PreflightClaimReport, AppError> {
     let store = ClaimStore::for_repository(&context.repository);
@@ -487,6 +506,9 @@ fn build_preflight_claim_report(
     let claims = store.load()?;
     let conflict = claims
         .conflict_for_scope(&agent, &context.status.pair, &context.status.current)
+        .cloned();
+    let owned_claim = claims
+        .get_for_scope(&agent, &context.status.pair, &context.status.current)
         .cloned();
     let now_unix = if stale_after_seconds.is_some() && conflict.is_some() {
         Some(current_unix_timestamp()?)
@@ -506,6 +528,9 @@ fn build_preflight_claim_report(
     Ok(PreflightClaimReport {
         requested_agent: agent,
         claim_allowed: conflict.is_none() && metadata_lock.ok,
+        claim_required,
+        claim_owned: owned_claim.is_some(),
+        owned_claim,
         metadata_lock,
         stale_after_seconds,
         conflict_stale,
@@ -1332,6 +1357,9 @@ fn show_handoff(
         let conflict = claims
             .conflict_for_scope(&agent, &claim_pair, &claim_branch)
             .cloned();
+        let owned_claim = claims
+            .get_for_scope(&agent, &claim_pair, &claim_branch)
+            .cloned();
         let now_unix = if stale_after_seconds.is_some() && conflict.is_some() {
             Some(current_unix_timestamp()?)
         } else {
@@ -1351,6 +1379,9 @@ fn show_handoff(
         report.claim = Some(PreflightClaimReport {
             requested_agent: agent,
             claim_allowed: conflict.is_none() && metadata_lock.ok,
+            claim_required: false,
+            claim_owned: owned_claim.is_some(),
+            owned_claim,
             metadata_lock,
             stale_after_seconds,
             conflict_stale,
@@ -2017,7 +2048,11 @@ fn print_preflight_report(report: &PreflightReport) {
     }
 
     if let Some(claim) = &report.claim {
-        if claim.claim_allowed {
+        if claim.claim_required && claim.claim_owned {
+            println!("Claim: owned by {}", claim.requested_agent);
+        } else if claim.claim_required && !claim.claim_owned && claim.conflict.is_none() {
+            println!("Claim: missing for {}", claim.requested_agent);
+        } else if claim.claim_allowed {
             println!("Claim: allowed for {}", claim.requested_agent);
         } else if let Some(conflict) = &claim.conflict {
             let stale = match (claim.conflict_stale, claim.stale_after_seconds) {
@@ -2483,6 +2518,9 @@ struct BranchExpectationReport {
 struct PreflightClaimReport {
     requested_agent: String,
     claim_allowed: bool,
+    claim_required: bool,
+    claim_owned: bool,
+    owned_claim: Option<AgentClaim>,
     metadata_lock: MetadataLockReport,
     stale_after_seconds: Option<u64>,
     conflict_stale: Option<bool>,
@@ -2892,6 +2930,11 @@ pub enum AppError {
         pair: String,
         branch: String,
     },
+    ClaimRequired {
+        agent: String,
+        pair: String,
+        branch: String,
+    },
     Clock {
         source: SystemTimeError,
     },
@@ -2964,6 +3007,14 @@ impl Display for AppError {
                 formatter,
                 "no claim for agent '{agent}' on pair '{pair}' and branch '{branch}'"
             ),
+            Self::ClaimRequired {
+                agent,
+                pair,
+                branch,
+            } => write!(
+                formatter,
+                "required claim for agent '{agent}' on pair '{pair}' and branch '{branch}' was not found"
+            ),
             Self::Clock { source } => Display::fmt(source, formatter),
             Self::DoctorFailed => write!(formatter, "doctor found problems"),
             Self::Git { source } => Display::fmt(source, formatter),
@@ -3015,6 +3066,7 @@ impl Error for AppError {
             | Self::ClaimBlocked { .. }
             | Self::ClaimConflict { .. }
             | Self::ClaimNotFound { .. }
+            | Self::ClaimRequired { .. }
             | Self::DoctorFailed
             | Self::InvalidBranchName { .. }
             | Self::InvalidDuration { .. }
@@ -3041,6 +3093,7 @@ impl AppError {
             | Self::Status { .. } => 2,
             Self::ClaimConflict { .. }
             | Self::ClaimBlocked { .. }
+            | Self::ClaimRequired { .. }
             | Self::PreflightRefused { .. }
             | Self::SwitchRefused { .. } => 3,
             Self::DoctorFailed => 4,
@@ -3062,6 +3115,7 @@ impl AppError {
             Self::ClaimBlocked { .. } => "claim_blocked",
             Self::ClaimConflict { .. } => "claim_conflict",
             Self::ClaimNotFound { .. } => "claim_not_found",
+            Self::ClaimRequired { .. } => "claim_required",
             Self::Clock { .. } => "clock_error",
             Self::DoctorFailed => "doctor_failed",
             Self::Git { source } => source.kind(),

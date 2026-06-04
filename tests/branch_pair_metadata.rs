@@ -426,6 +426,34 @@ fn preflight_json_reports_claim_readiness_for_agent() {
 }
 
 #[test]
+fn preflight_json_requires_existing_claim_for_agent() {
+    let dir = TestDir::new("zaphod-cli-metadata");
+    init_repo_with_pair_branches(dir.path());
+    let pair = zaphod(dir.path(), ["pair", "feature/api", "feature/ui"]);
+    assert_success(&pair);
+    let claim = zaphod(dir.path(), ["claim", "--agent", "codex"]);
+    assert_success(&claim);
+
+    let preflight = zaphod(
+        dir.path(),
+        ["preflight", "--json", "--agent", "codex", "--require-claim"],
+    );
+
+    assert_success(&preflight);
+    let report: serde_json::Value =
+        serde_json::from_slice(&preflight.stdout).expect("preflight json");
+    assert_eq!(report["ready"], true);
+    assert_eq!(report["claim"]["requested_agent"], "codex");
+    assert_eq!(report["claim"]["claim_allowed"], true);
+    assert_eq!(report["claim"]["claim_required"], true);
+    assert_eq!(report["claim"]["claim_owned"], true);
+    assert_eq!(report["claim"]["owned_claim"]["agent"], "codex");
+    assert_eq!(report["claim"]["owned_claim"]["pair"], "default");
+    assert_eq!(report["claim"]["owned_claim"]["branch"], "feature/api");
+    assert!(report["claim"]["conflict"].is_null());
+}
+
+#[test]
 fn preflight_json_reports_expected_branch_and_side() {
     let dir = TestDir::new("zaphod-cli-metadata");
     init_repo_with_pair_branches(dir.path());
