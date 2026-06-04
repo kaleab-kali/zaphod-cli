@@ -147,6 +147,11 @@ pub enum CliCommand {
         /// Pair side expected as the current branch before writing the claim.
         #[arg(long)]
         side: Option<PairSide>,
+
+        /// Report whether a conflicting claim is older than this duration,
+        /// for example 30m, 2h, or 1d.
+        #[arg(long)]
+        stale_after: Option<String>,
     },
 
     /// Refresh an existing agent session claim for the current pair and branch.
@@ -609,6 +614,7 @@ mod tests {
                 pair: "api".to_owned(),
                 branch: None,
                 side: None,
+                stale_after: None,
             }
         );
     }
@@ -634,6 +640,24 @@ mod tests {
                 pair: "default".to_owned(),
                 branch: Some("feature/api".to_owned()),
                 side: Some(PairSide::Left),
+                stale_after: None,
+            }
+        );
+    }
+
+    #[test]
+    fn parses_claim_stale_conflict_window() {
+        let cli = Cli::parse_from(["zaphod", "claim", "--agent", "codex", "--stale-after", "2h"]);
+
+        assert_eq!(
+            cli.command,
+            CliCommand::Claim {
+                json: false,
+                agent: "codex".to_owned(),
+                pair: "default".to_owned(),
+                branch: None,
+                side: None,
+                stale_after: Some("2h".to_owned()),
             }
         );
     }
