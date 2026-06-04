@@ -7,6 +7,8 @@ and this project uses semantic versioning for published releases.
 
 ## Unreleased
 
+## 0.1.26 - 2026-06-04
+
 ### Added
 
 - `claim --stale-after` for reporting whether a conflicting claim is stale
