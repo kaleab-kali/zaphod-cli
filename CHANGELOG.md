@@ -7,6 +7,8 @@ and this project uses semantic versioning for published releases.
 
 ## Unreleased
 
+## 0.1.24 - 2026-06-04
+
 ### Added
 
 - `claims --side` for read-only claim reports scoped to the left or right side
