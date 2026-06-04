@@ -99,6 +99,7 @@ zaphod claim --agent codex --pair search --stale-after 2h --json
 zaphod heartbeat --agent codex --pair search --json
 zaphod heartbeat --agent codex --pair search --stale-after 2h --json
 zaphod claims --current --json
+zaphod claims --conflicts-for codex --current --json
 zaphod claims --pair search --side left --json
 zaphod claims --pair search --stale-after 2h --json
 zaphod prune-claims --pair search --stale-after 2h --json
@@ -464,16 +465,21 @@ List active agent session claims:
 zaphod claims
 zaphod claims --json
 zaphod claims --current --json
+zaphod claims --conflicts-for codex --current --json
 zaphod claims --pair api --side left --json
 zaphod claims --agent codex --pair api --branch feature/api --json
 zaphod claims --pair api --stale-after 2h --json
 ```
 
 Use filters when a script needs to check a specific agent, pair, branch, the
-current branch, pair side, or stale-claim window without parsing unrelated
-claim entries. Use `--side left` or `--side right` to inspect claims for a pair
-side without switching branches. Durations use a positive number followed by
-`s`, `m`, `h`, or `d`.
+current branch, pair side, conflict owner, or stale-claim window without
+parsing unrelated claim entries. Use `--side left` or `--side right` to inspect
+claims for a pair side without switching branches. Durations use a positive
+number followed by `s`, `m`, `h`, or `d`.
+
+Use `--conflicts-for <agent>` to show claims owned by other agents. Combined
+with `--current`, `--branch`, or `--side`, this gives agents a read-only
+blocking-claim summary before they start or resume work.
 
 ### `zaphod prune-claims`
 

@@ -71,12 +71,22 @@ pub fn run(cli: Cli) -> Result<(), AppError> {
         CliCommand::Claims {
             json,
             agent,
+            conflicts_for,
             pair,
             branch,
             current,
             side,
             stale_after,
-        } => list_claims(json, agent, pair, branch, current, side, stale_after),
+        } => list_claims(ListClaimsOptions {
+            json,
+            agent,
+            conflicts_for,
+            pair,
+            branch,
+            current,
+            side,
+            stale_after,
+        }),
         CliCommand::PruneClaims {
             json,
             agent,
@@ -915,17 +925,34 @@ fn heartbeat_claim(
     Ok(())
 }
 
-fn list_claims(
+struct ListClaimsOptions {
     json: bool,
     agent: Option<String>,
-    mut pair: Option<String>,
+    conflicts_for: Option<String>,
+    pair: Option<String>,
     branch: Option<String>,
     current: bool,
     side: Option<PairSide>,
     stale_after: Option<String>,
-) -> Result<(), AppError> {
+}
+
+fn list_claims(options: ListClaimsOptions) -> Result<(), AppError> {
+    let ListClaimsOptions {
+        json,
+        agent,
+        conflicts_for,
+        mut pair,
+        branch,
+        current,
+        side,
+        stale_after,
+    } = options;
+
     if let Some(agent) = &agent {
         validate_agent_name(agent)?;
+    }
+    if let Some(conflicts_for) = &conflicts_for {
+        validate_agent_name(conflicts_for)?;
     }
     if let Some(pair) = &pair {
         validate_pair_name(pair)?;
@@ -959,6 +986,9 @@ fn list_claims(
         .iter()
         .filter(|claim| {
             claim_matches_filters(claim, agent.as_deref(), pair.as_deref(), branch.as_deref())
+                && conflicts_for
+                    .as_deref()
+                    .is_none_or(|conflicts_for| claim.agent != conflicts_for)
                 && stale_after_seconds.is_none_or(|stale_after_seconds| {
                     claim_is_stale(
                         claim,
@@ -974,6 +1004,7 @@ fn list_claims(
         claims_path: store.path().display().to_string(),
         filters: ClaimsFilterReport {
             agent,
+            conflicts_for,
             pair,
             branch,
             current,
@@ -1108,6 +1139,7 @@ fn prune_claims(options: PruneClaimsOptions) -> Result<(), AppError> {
         claims_path: store.path().display().to_string(),
         filters: ClaimsFilterReport {
             agent,
+            conflicts_for: None,
             pair,
             branch,
             current,
@@ -2119,6 +2151,7 @@ fn print_claims_report(report: &ClaimsReport) {
     println!("Claims metadata: {}", report.claims_path);
 
     if report.filters.agent.is_some()
+        || report.filters.conflicts_for.is_some()
         || report.filters.pair.is_some()
         || report.filters.branch.is_some()
         || report.filters.current
@@ -2126,8 +2159,9 @@ fn print_claims_report(report: &ClaimsReport) {
         || report.filters.stale_after_seconds.is_some()
     {
         println!(
-            "Filters: agent={}, pair={}, branch={}, current={}, side={}, stale_after={}",
+            "Filters: agent={}, conflicts_for={}, pair={}, branch={}, current={}, side={}, stale_after={}",
             report.filters.agent.as_deref().unwrap_or("*"),
+            report.filters.conflicts_for.as_deref().unwrap_or("*"),
             report.filters.pair.as_deref().unwrap_or("*"),
             report.filters.branch.as_deref().unwrap_or("*"),
             report.filters.current,
@@ -2517,6 +2551,7 @@ struct PruneClaimsReport {
 #[derive(Debug, Serialize)]
 struct ClaimsFilterReport {
     agent: Option<String>,
+    conflicts_for: Option<String>,
     pair: Option<String>,
     branch: Option<String>,
     current: bool,

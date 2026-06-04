@@ -7,6 +7,11 @@ and this project uses semantic versioning for published releases.
 
 ## Unreleased
 
+### Added
+
+- `claims --conflicts-for` for read-only claim summaries scoped to claims owned
+  by other agents before an agent starts or resumes work.
+
 ## 0.1.27 - 2026-06-04
 
 ### Added
