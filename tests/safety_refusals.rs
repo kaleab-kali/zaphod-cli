@@ -578,6 +578,113 @@ fn heartbeat_json_reports_conflicting_agent() {
 }
 
 #[test]
+fn heartbeat_json_reports_stale_conflicting_agent_without_takeover() {
+    let dir = TestDir::new("zaphod-cli-safety");
+    init_repo_with_pair_branches(dir.path());
+    let pair = zaphod(dir.path(), ["pair", "feature/api", "feature/ui"]);
+    assert_success(&pair);
+    let metadata_dir = dir.git_dir().join("zaphod");
+    fs::create_dir_all(&metadata_dir).expect("create zaphod metadata directory");
+    fs::write(
+        metadata_dir.join("claims.toml"),
+        r#"[[claims]]
+agent = "codex"
+pair = "default"
+branch = "feature/api"
+created_at_unix = 1
+"#,
+    )
+    .expect("write claims metadata");
+
+    let output = zaphod(
+        dir.path(),
+        [
+            "heartbeat",
+            "--json",
+            "--agent",
+            "other",
+            "--stale-after",
+            "1d",
+        ],
+    );
+
+    assert!(!output.status.success());
+    assert_eq!(output.status.code(), Some(3));
+    let report: serde_json::Value = serde_json::from_slice(&output.stdout).expect("heartbeat json");
+    assert_eq!(report["ok"], false);
+    assert_eq!(report["status"], "conflict");
+    assert_eq!(report["agent"], "other");
+    assert_eq!(report["conflict"]["agent"], "codex");
+    assert_eq!(report["stale_after_seconds"], 86_400);
+    assert_eq!(report["conflict_stale"], true);
+
+    let claims = zaphod(dir.path(), ["claims", "--json"]);
+    assert_success(&claims);
+    let claims_report: serde_json::Value =
+        serde_json::from_slice(&claims.stdout).expect("claims json");
+    assert_eq!(claims_report["claims"].as_array().expect("claims").len(), 1);
+    assert_eq!(claims_report["claims"][0]["agent"], "codex");
+}
+
+#[test]
+fn heartbeat_json_reports_fresh_conflicting_agent() {
+    let dir = TestDir::new("zaphod-cli-safety");
+    init_repo_with_pair_branches(dir.path());
+    let pair = zaphod(dir.path(), ["pair", "feature/api", "feature/ui"]);
+    assert_success(&pair);
+    let metadata_dir = dir.git_dir().join("zaphod");
+    fs::create_dir_all(&metadata_dir).expect("create zaphod metadata directory");
+    fs::write(
+        metadata_dir.join("claims.toml"),
+        r#"[[claims]]
+agent = "codex"
+pair = "default"
+branch = "feature/api"
+created_at_unix = 4102444800
+"#,
+    )
+    .expect("write claims metadata");
+
+    let output = zaphod(
+        dir.path(),
+        [
+            "heartbeat",
+            "--json",
+            "--agent",
+            "other",
+            "--stale-after",
+            "1d",
+        ],
+    );
+
+    assert!(!output.status.success());
+    assert_eq!(output.status.code(), Some(3));
+    let report: serde_json::Value = serde_json::from_slice(&output.stdout).expect("heartbeat json");
+    assert_eq!(report["ok"], false);
+    assert_eq!(report["status"], "conflict");
+    assert_eq!(report["stale_after_seconds"], 86_400);
+    assert_eq!(report["conflict_stale"], false);
+}
+
+#[test]
+fn heartbeat_rejects_invalid_stale_claim_window() {
+    let dir = TestDir::new("zaphod-cli-safety");
+    init_repo_with_pair_branches(dir.path());
+
+    let output = zaphod(
+        dir.path(),
+        ["heartbeat", "--agent", "codex", "--stale-after", "later"],
+    );
+
+    assert!(!output.status.success());
+    assert_eq!(output.status.code(), Some(2));
+    assert_stderr_contains(
+        &output,
+        "duration 'later' is invalid; use a positive number followed by s, m, h, or d",
+    );
+}
+
+#[test]
 fn heartbeat_reports_missing_claim() {
     let dir = TestDir::new("zaphod-cli-safety");
     init_repo_with_pair_branches(dir.path());

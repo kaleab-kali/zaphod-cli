@@ -66,7 +66,8 @@ pub fn run(cli: Cli) -> Result<(), AppError> {
             pair,
             branch,
             side,
-        } => heartbeat_claim(json, agent, pair, branch, side),
+            stale_after,
+        } => heartbeat_claim(json, agent, pair, branch, side, stale_after),
         CliCommand::Claims {
             json,
             agent,
@@ -798,8 +799,13 @@ fn heartbeat_claim(
     pair_name: String,
     expected_branch: Option<String>,
     expected_side: Option<PairSide>,
+    stale_after: Option<String>,
 ) -> Result<(), AppError> {
     validate_agent_name(&agent)?;
+    let stale_after_seconds = stale_after
+        .as_deref()
+        .map(parse_duration_seconds)
+        .transpose()?;
     let repository = GitRepository::discover(".")?;
     let store = ClaimStore::for_repository(&repository);
     let _lock = store.lock()?;
@@ -824,7 +830,7 @@ fn heartbeat_claim(
             conflict: None,
             expectation,
             refusal_reasons: Vec::new(),
-            stale_after_seconds: None,
+            stale_after_seconds,
             conflict_stale: None,
         };
         print_claim_operation_report(&report, json)?;
@@ -837,6 +843,18 @@ fn heartbeat_claim(
         claims.conflict_for_scope(&agent, &context.status.pair, &context.status.current)
     {
         let conflict_agent = conflict.agent.clone();
+        let now_unix = if stale_after_seconds.is_some() {
+            Some(current_unix_timestamp()?)
+        } else {
+            None
+        };
+        let conflict_stale = stale_after_seconds.map(|stale_after_seconds| {
+            claim_is_stale(
+                conflict,
+                now_unix.expect("stale claim conflict reporting has a timestamp"),
+                stale_after_seconds,
+            )
+        });
         let report = ClaimOperationReport {
             ok: false,
             status: "conflict",
@@ -849,8 +867,8 @@ fn heartbeat_claim(
             conflict: Some(conflict.clone()),
             expectation,
             refusal_reasons: Vec::new(),
-            stale_after_seconds: None,
-            conflict_stale: None,
+            stale_after_seconds,
+            conflict_stale,
         };
         print_claim_operation_report(&report, json)?;
         return Err(AppError::ClaimConflict {
@@ -889,7 +907,7 @@ fn heartbeat_claim(
         conflict: None,
         expectation,
         refusal_reasons: Vec::new(),
-        stale_after_seconds: None,
+        stale_after_seconds,
         conflict_stale: None,
     };
     print_claim_operation_report(&report, json)?;
