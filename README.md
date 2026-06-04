@@ -62,6 +62,7 @@ zaphod preflight --agent codex --json
 zaphod preflight --agent codex --branch feature/api --side left --json
 zaphod preflight --agent codex --stale-after 2h --json
 zaphod claim --agent codex --pair api --side left --json
+zaphod claim --agent codex --pair api --stale-after 2h --json
 zaphod heartbeat --agent codex --pair api --side left --json
 zaphod assert --pair api --side left --json
 zaphod handoff --agent codex --side left --stale-after 2h --json
@@ -92,6 +93,7 @@ claims add a lightweight coordination layer:
 
 ```sh
 zaphod claim --agent codex --pair search --json
+zaphod claim --agent codex --pair search --stale-after 2h --json
 # work on the branch
 zaphod heartbeat --agent codex --pair search --json
 zaphod claims --current --json
@@ -406,6 +408,7 @@ Claim the current pair and branch for an agent session:
 zaphod claim --agent codex --pair api
 zaphod claim --agent codex --pair api --json
 zaphod claim --agent codex --pair api --side left --json
+zaphod claim --agent codex --pair api --stale-after 2h --json
 ```
 
 `claim` writes repo-local metadata under `.git/zaphod/claims.toml`. It refuses
@@ -419,6 +422,10 @@ Agent names may contain only letters, numbers, `.`, `_`, and `-`.
 Use `--branch` or `--side` when the claim should only be written from a specific
 branch or pair side. This lets an agent combine "am I in the right place?" and
 "claim this work" into one guarded command.
+
+Use `--stale-after` to add `conflict_stale` to JSON conflict reports. This is a
+reporting aid only: `claim` still refuses the conflict and never takes over or
+removes another agent's claim automatically.
 
 ### `zaphod heartbeat`
 

@@ -58,7 +58,8 @@ pub fn run(cli: Cli) -> Result<(), AppError> {
             pair,
             branch,
             side,
-        } => claim_current_scope(json, agent, pair, branch, side),
+            stale_after,
+        } => claim_current_scope(json, agent, pair, branch, side, stale_after),
         CliCommand::Heartbeat {
             json,
             agent,
@@ -662,8 +663,13 @@ fn claim_current_scope(
     pair_name: String,
     expected_branch: Option<String>,
     expected_side: Option<PairSide>,
+    stale_after: Option<String>,
 ) -> Result<(), AppError> {
     validate_agent_name(&agent)?;
+    let stale_after_seconds = stale_after
+        .as_deref()
+        .map(parse_duration_seconds)
+        .transpose()?;
     let repository = GitRepository::discover(".")?;
     let store = ClaimStore::for_repository(&repository);
     let _lock = store.lock()?;
@@ -688,6 +694,8 @@ fn claim_current_scope(
             conflict: None,
             expectation,
             refusal_reasons: context.status.refusal_reasons.clone(),
+            stale_after_seconds,
+            conflict_stale: None,
         };
         print_claim_operation_report(&report, json)?;
         return Err(AppError::PreflightRefused {
@@ -708,6 +716,8 @@ fn claim_current_scope(
             conflict: None,
             expectation,
             refusal_reasons: Vec::new(),
+            stale_after_seconds,
+            conflict_stale: None,
         };
         print_claim_operation_report(&report, json)?;
         return Err(error);
@@ -718,6 +728,18 @@ fn claim_current_scope(
         claims.conflict_for_scope(&agent, &context.status.pair, &context.status.current)
     {
         let conflict_agent = conflict.agent.clone();
+        let now_unix = if stale_after_seconds.is_some() {
+            Some(current_unix_timestamp()?)
+        } else {
+            None
+        };
+        let conflict_stale = stale_after_seconds.map(|stale_after_seconds| {
+            claim_is_stale(
+                conflict,
+                now_unix.expect("stale claim conflict reporting has a timestamp"),
+                stale_after_seconds,
+            )
+        });
         let report = ClaimOperationReport {
             ok: false,
             status: "conflict",
@@ -730,6 +752,8 @@ fn claim_current_scope(
             conflict: Some(conflict.clone()),
             expectation,
             refusal_reasons: Vec::new(),
+            stale_after_seconds,
+            conflict_stale,
         };
         print_claim_operation_report(&report, json)?;
         return Err(AppError::ClaimConflict {
@@ -760,6 +784,8 @@ fn claim_current_scope(
         conflict: None,
         expectation,
         refusal_reasons: Vec::new(),
+        stale_after_seconds,
+        conflict_stale: None,
     };
     print_claim_operation_report(&report, json)?;
 
@@ -798,6 +824,8 @@ fn heartbeat_claim(
             conflict: None,
             expectation,
             refusal_reasons: Vec::new(),
+            stale_after_seconds: None,
+            conflict_stale: None,
         };
         print_claim_operation_report(&report, json)?;
         return Err(error);
@@ -821,6 +849,8 @@ fn heartbeat_claim(
             conflict: Some(conflict.clone()),
             expectation,
             refusal_reasons: Vec::new(),
+            stale_after_seconds: None,
+            conflict_stale: None,
         };
         print_claim_operation_report(&report, json)?;
         return Err(AppError::ClaimConflict {
@@ -859,6 +889,8 @@ fn heartbeat_claim(
         conflict: None,
         expectation,
         refusal_reasons: Vec::new(),
+        stale_after_seconds: None,
+        conflict_stale: None,
     };
     print_claim_operation_report(&report, json)?;
 
@@ -1125,6 +1157,8 @@ fn unclaim_current_scope(
         conflict: None,
         expectation: None,
         refusal_reasons: Vec::new(),
+        stale_after_seconds: None,
+        conflict_stale: None,
     };
     print_claim_operation_report(&report, json)?;
 
@@ -2040,6 +2074,9 @@ fn print_claim_operation_report(report: &ClaimOperationReport, json: bool) -> Re
 
     if let Some(conflict) = &report.conflict {
         println!("Conflict: claimed by {}", conflict.agent);
+        if let Some(conflict_stale) = report.conflict_stale {
+            println!("Conflict stale: {conflict_stale}");
+        }
     }
 
     if let Some(expectation) = &report.expectation {
@@ -2433,6 +2470,10 @@ struct ClaimOperationReport {
     conflict: Option<AgentClaim>,
     expectation: Option<BranchExpectationReport>,
     refusal_reasons: Vec<RefusalReason>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    stale_after_seconds: Option<u64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    conflict_stale: Option<bool>,
 }
 
 #[derive(Debug, Serialize)]
