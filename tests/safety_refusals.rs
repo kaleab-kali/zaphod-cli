@@ -825,6 +825,15 @@ fn claims_rejects_invalid_filter_values() {
         "agent name 'bad/name' must contain only letters, numbers, '.', '_', or '-'",
     );
 
+    let output = zaphod(dir.path(), ["claims", "--conflicts-for", "bad/name"]);
+
+    assert!(!output.status.success());
+    assert_eq!(output.status.code(), Some(2));
+    assert_stderr_contains(
+        &output,
+        "agent name 'bad/name' must contain only letters, numbers, '.', '_', or '-'",
+    );
+
     let output = zaphod(dir.path(), ["claims", "--pair", "bad/name"]);
 
     assert!(!output.status.success());

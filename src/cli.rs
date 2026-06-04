@@ -192,6 +192,10 @@ pub enum CliCommand {
         #[arg(long)]
         agent: Option<String>,
 
+        /// Show claims owned by other agents that would conflict for this agent.
+        #[arg(long)]
+        conflicts_for: Option<String>,
+
         /// Filter claims by pair name.
         #[arg(long)]
         pair: Option<String>,
@@ -763,6 +767,7 @@ mod tests {
             CliCommand::Claims {
                 json: true,
                 agent: Some("codex".to_owned()),
+                conflicts_for: None,
                 pair: Some("api".to_owned()),
                 branch: Some("feature/api".to_owned()),
                 current: false,
@@ -781,6 +786,7 @@ mod tests {
             CliCommand::Claims {
                 json: true,
                 agent: None,
+                conflicts_for: None,
                 pair: None,
                 branch: None,
                 current: true,
@@ -801,10 +807,30 @@ mod tests {
             CliCommand::Claims {
                 json: true,
                 agent: None,
+                conflicts_for: None,
                 pair: Some("api".to_owned()),
                 branch: None,
                 current: false,
                 side: Some(PairSide::Left),
+                stale_after: None,
+            }
+        );
+    }
+
+    #[test]
+    fn parses_claims_conflicts_for_filter() {
+        let cli = Cli::parse_from(["zaphod", "claims", "--json", "--conflicts-for", "codex"]);
+
+        assert_eq!(
+            cli.command,
+            CliCommand::Claims {
+                json: true,
+                agent: None,
+                conflicts_for: Some("codex".to_owned()),
+                pair: None,
+                branch: None,
+                current: false,
+                side: None,
                 stale_after: None,
             }
         );
