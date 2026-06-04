@@ -7,6 +7,8 @@ and this project uses semantic versioning for published releases.
 
 ## Unreleased
 
+## 0.1.29 - 2026-06-05
+
 ### Added
 
 - `preflight --require-claim` for read-only resume checks that refuse unless
