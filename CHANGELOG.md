@@ -7,6 +7,11 @@ and this project uses semantic versioning for published releases.
 
 ## Unreleased
 
+### Added
+
+- `heartbeat --stale-after` for reporting whether a conflicting claim is stale
+  without taking it over or mutating existing claim metadata.
+
 ## 0.1.26 - 2026-06-04
 
 ### Added
