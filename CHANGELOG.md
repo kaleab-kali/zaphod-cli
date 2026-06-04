@@ -7,6 +7,8 @@ and this project uses semantic versioning for published releases.
 
 ## Unreleased
 
+## 0.1.27 - 2026-06-04
+
 ### Added
 
 - `heartbeat --stale-after` for reporting whether a conflicting claim is stale
