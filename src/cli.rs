@@ -102,6 +102,10 @@ pub enum CliCommand {
         #[arg(long)]
         agent: Option<String>,
 
+        /// Refuse unless the requested agent already owns the current claim.
+        #[arg(long, requires = "agent")]
+        require_claim: bool,
+
         /// Mark claim conflicts older than this duration as stale, for example 30m, 2h, or 1d.
         #[arg(long, requires = "agent")]
         stale_after: Option<String>,
@@ -568,8 +572,38 @@ mod tests {
                 branch: Some("feature/api".to_owned()),
                 side: Some(PairSide::Left),
                 agent: Some("codex".to_owned()),
+                require_claim: false,
                 stale_after: Some("2h".to_owned()),
             }
+        );
+    }
+
+    #[test]
+    fn parses_preflight_require_claim() {
+        let cli = Cli::parse_from(["zaphod", "preflight", "--agent", "codex", "--require-claim"]);
+
+        assert_eq!(
+            cli.command,
+            CliCommand::Preflight {
+                json: false,
+                name: "default".to_owned(),
+                branch: None,
+                side: None,
+                agent: Some("codex".to_owned()),
+                require_claim: true,
+                stale_after: None,
+            }
+        );
+    }
+
+    #[test]
+    fn preflight_require_claim_requires_agent() {
+        let error = Cli::try_parse_from(["zaphod", "preflight", "--require-claim"])
+            .expect_err("reject required claim without agent");
+
+        assert_eq!(
+            error.kind(),
+            clap::error::ErrorKind::MissingRequiredArgument
         );
     }
 

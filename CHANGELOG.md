@@ -7,6 +7,11 @@ and this project uses semantic versioning for published releases.
 
 ## Unreleased
 
+### Added
+
+- `preflight --require-claim` for read-only resume checks that refuse unless
+  the requested agent already owns the current pair and branch claim.
+
 ## 0.1.28 - 2026-06-04
 
 ### Added
