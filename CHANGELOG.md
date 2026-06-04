@@ -7,6 +7,8 @@ and this project uses semantic versioning for published releases.
 
 ## Unreleased
 
+## 0.1.28 - 2026-06-04
+
 ### Added
 
 - `claims --conflicts-for` for read-only claim summaries scoped to claims owned
