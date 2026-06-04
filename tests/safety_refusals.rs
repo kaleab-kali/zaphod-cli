@@ -711,6 +711,29 @@ fn claims_side_reports_missing_pair() {
 }
 
 #[test]
+fn prune_claims_side_reports_missing_pair() {
+    let dir = TestDir::new("zaphod-cli-safety");
+    init_repo_with_pair_branches(dir.path());
+
+    let output = zaphod(
+        dir.path(),
+        [
+            "prune-claims",
+            "--pair",
+            "missing",
+            "--side",
+            "left",
+            "--stale-after",
+            "1d",
+        ],
+    );
+
+    assert!(!output.status.success());
+    assert_eq!(output.status.code(), Some(2));
+    assert_stderr_contains(&output, "pair 'missing' was not found");
+}
+
+#[test]
 fn unclaim_reports_missing_claim() {
     let dir = TestDir::new("zaphod-cli-safety");
     init_repo_with_pair_branches(dir.path());
