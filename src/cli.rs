@@ -194,6 +194,10 @@ pub enum CliCommand {
         #[arg(long, conflicts_with = "branch")]
         current: bool,
 
+        /// Filter claims to the left or right side of a pair.
+        #[arg(long, conflicts_with_all = ["branch", "current"])]
+        side: Option<PairSide>,
+
         /// Filter claims older than this duration, for example 30m, 2h, or 1d.
         #[arg(long)]
         stale_after: Option<String>,
@@ -703,6 +707,7 @@ mod tests {
                 pair: Some("api".to_owned()),
                 branch: Some("feature/api".to_owned()),
                 current: false,
+                side: None,
                 stale_after: Some("2h".to_owned()),
             }
         );
@@ -720,6 +725,27 @@ mod tests {
                 pair: None,
                 branch: None,
                 current: true,
+                side: None,
+                stale_after: None,
+            }
+        );
+    }
+
+    #[test]
+    fn parses_claims_side_filter() {
+        let cli = Cli::parse_from([
+            "zaphod", "claims", "--json", "--pair", "api", "--side", "left",
+        ]);
+
+        assert_eq!(
+            cli.command,
+            CliCommand::Claims {
+                json: true,
+                agent: None,
+                pair: Some("api".to_owned()),
+                branch: None,
+                current: false,
+                side: Some(PairSide::Left),
                 stale_after: None,
             }
         );
@@ -730,6 +756,29 @@ mod tests {
         let error =
             Cli::try_parse_from(["zaphod", "claims", "--current", "--branch", "feature/api"])
                 .expect_err("reject current and branch filters together");
+
+        assert_eq!(error.kind(), clap::error::ErrorKind::ArgumentConflict);
+    }
+
+    #[test]
+    fn claims_side_conflicts_with_branch_filter() {
+        let error = Cli::try_parse_from([
+            "zaphod",
+            "claims",
+            "--side",
+            "left",
+            "--branch",
+            "feature/api",
+        ])
+        .expect_err("reject side and branch filters together");
+
+        assert_eq!(error.kind(), clap::error::ErrorKind::ArgumentConflict);
+    }
+
+    #[test]
+    fn claims_side_conflicts_with_current_filter() {
+        let error = Cli::try_parse_from(["zaphod", "claims", "--side", "left", "--current"])
+            .expect_err("reject side and current filters together");
 
         assert_eq!(error.kind(), clap::error::ErrorKind::ArgumentConflict);
     }

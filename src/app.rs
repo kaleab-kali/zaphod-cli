@@ -72,8 +72,9 @@ pub fn run(cli: Cli) -> Result<(), AppError> {
             pair,
             branch,
             current,
+            side,
             stale_after,
-        } => list_claims(json, agent, pair, branch, current, stale_after),
+        } => list_claims(json, agent, pair, branch, current, side, stale_after),
         CliCommand::PruneClaims {
             json,
             agent,
@@ -865,9 +866,10 @@ fn heartbeat_claim(
 fn list_claims(
     json: bool,
     agent: Option<String>,
-    pair: Option<String>,
+    mut pair: Option<String>,
     branch: Option<String>,
     current: bool,
+    side: Option<PairSide>,
     stale_after: Option<String>,
 ) -> Result<(), AppError> {
     if let Some(agent) = &agent {
@@ -889,6 +891,21 @@ fn list_claims(
     let repository = GitRepository::discover(".")?;
     let branch = if current {
         Some(repository.current_branch()?)
+    } else if let Some(side) = side {
+        let pair_name = pair.clone().unwrap_or_else(|| "default".to_owned());
+        if pair.is_none() {
+            pair = Some(pair_name.clone());
+        }
+        let pair_store = MetadataStore::for_repository(&repository);
+        let pairs = pair_store.load()?;
+        let pair = pairs
+            .get(&pair_name)
+            .ok_or(AppError::PairNotFound { name: pair_name })?;
+
+        Some(match side {
+            PairSide::Left => pair.left.clone(),
+            PairSide::Right => pair.right.clone(),
+        })
     } else {
         branch
     };
@@ -921,6 +938,7 @@ fn list_claims(
             pair,
             branch,
             current,
+            side: side.map(pair_side_name),
             stale_after_seconds,
         },
         claims: filtered_claims,
@@ -1049,6 +1067,7 @@ fn prune_claims(options: PruneClaimsOptions) -> Result<(), AppError> {
             pair,
             branch,
             current,
+            side: None,
             stale_after_seconds,
         },
         orphaned,
@@ -2054,14 +2073,16 @@ fn print_claims_report(report: &ClaimsReport) {
         || report.filters.pair.is_some()
         || report.filters.branch.is_some()
         || report.filters.current
+        || report.filters.side.is_some()
         || report.filters.stale_after_seconds.is_some()
     {
         println!(
-            "Filters: agent={}, pair={}, branch={}, current={}, stale_after={}",
+            "Filters: agent={}, pair={}, branch={}, current={}, side={}, stale_after={}",
             report.filters.agent.as_deref().unwrap_or("*"),
             report.filters.pair.as_deref().unwrap_or("*"),
             report.filters.branch.as_deref().unwrap_or("*"),
             report.filters.current,
+            report.filters.side.unwrap_or("*"),
             report
                 .filters
                 .stale_after_seconds
@@ -2446,6 +2467,7 @@ struct ClaimsFilterReport {
     pair: Option<String>,
     branch: Option<String>,
     current: bool,
+    side: Option<&'static str>,
     stale_after_seconds: Option<u64>,
 }
 
