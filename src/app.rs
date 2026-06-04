@@ -81,6 +81,7 @@ pub fn run(cli: Cli) -> Result<(), AppError> {
             pair,
             branch,
             current,
+            side,
             stale_after,
             orphaned,
             apply,
@@ -90,6 +91,7 @@ pub fn run(cli: Cli) -> Result<(), AppError> {
             pair,
             branch,
             current,
+            side,
             stale_after,
             orphaned,
             apply,
@@ -892,20 +894,7 @@ fn list_claims(
     let branch = if current {
         Some(repository.current_branch()?)
     } else if let Some(side) = side {
-        let pair_name = pair.clone().unwrap_or_else(|| "default".to_owned());
-        if pair.is_none() {
-            pair = Some(pair_name.clone());
-        }
-        let pair_store = MetadataStore::for_repository(&repository);
-        let pairs = pair_store.load()?;
-        let pair = pairs
-            .get(&pair_name)
-            .ok_or(AppError::PairNotFound { name: pair_name })?;
-
-        Some(match side {
-            PairSide::Left => pair.left.clone(),
-            PairSide::Right => pair.right.clone(),
-        })
+        Some(resolve_pair_side_branch(&repository, &mut pair, side)?)
     } else {
         branch
     };
@@ -959,6 +948,7 @@ struct PruneClaimsOptions {
     pair: Option<String>,
     branch: Option<String>,
     current: bool,
+    side: Option<PairSide>,
     stale_after: Option<String>,
     orphaned: bool,
     apply: bool,
@@ -971,6 +961,7 @@ fn prune_claims(options: PruneClaimsOptions) -> Result<(), AppError> {
         pair,
         branch,
         current,
+        side,
         stale_after,
         orphaned,
         apply,
@@ -993,8 +984,11 @@ fn prune_claims(options: PruneClaimsOptions) -> Result<(), AppError> {
     };
 
     let repository = GitRepository::discover(".")?;
+    let mut pair = pair;
     let branch = if current {
         Some(repository.current_branch()?)
+    } else if let Some(side) = side {
+        Some(resolve_pair_side_branch(&repository, &mut pair, side)?)
     } else {
         branch
     };
@@ -1067,7 +1061,7 @@ fn prune_claims(options: PruneClaimsOptions) -> Result<(), AppError> {
             pair,
             branch,
             current,
-            side: None,
+            side: side.map(pair_side_name),
             stale_after_seconds,
         },
         orphaned,
@@ -2657,6 +2651,31 @@ fn pair_side_for_branch(pair: &BranchPair, branch: &str) -> Option<PairSide> {
     } else {
         None
     }
+}
+
+fn resolve_pair_side_branch(
+    repository: &GitRepository,
+    pair_filter: &mut Option<String>,
+    side: PairSide,
+) -> Result<String, AppError> {
+    let pair_name = match pair_filter {
+        Some(pair) => pair.clone(),
+        None => {
+            let pair_name = "default".to_owned();
+            *pair_filter = Some(pair_name.clone());
+            pair_name
+        }
+    };
+    let pair_store = MetadataStore::for_repository(repository);
+    let pairs = pair_store.load()?;
+    let pair = pairs
+        .get(&pair_name)
+        .ok_or(AppError::PairNotFound { name: pair_name })?;
+
+    Ok(match side {
+        PairSide::Left => pair.left.clone(),
+        PairSide::Right => pair.right.clone(),
+    })
 }
 
 fn pair_side_name(side: PairSide) -> &'static str {

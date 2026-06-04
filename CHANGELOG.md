@@ -7,6 +7,11 @@ and this project uses semantic versioning for published releases.
 
 ## Unreleased
 
+### Added
+
+- `prune-claims --side` for dry-run-by-default claim cleanup scoped to the left
+  or right side of a named pair without switching branches.
+
 ## 0.1.24 - 2026-06-04
 
 ### Added

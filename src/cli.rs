@@ -225,6 +225,10 @@ pub enum CliCommand {
         #[arg(long, conflicts_with = "branch")]
         current: bool,
 
+        /// Filter claims to the left or right side of a pair.
+        #[arg(long, conflicts_with_all = ["branch", "current"])]
+        side: Option<PairSide>,
+
         /// Select claims older than this duration, for example 30m, 2h, or 1d.
         #[arg(long, required_unless_present = "orphaned")]
         stale_after: Option<String>,
@@ -808,6 +812,7 @@ mod tests {
                 pair: Some("api".to_owned()),
                 branch: Some("feature/api".to_owned()),
                 current: false,
+                side: None,
                 stale_after: Some("2h".to_owned()),
                 orphaned: false,
                 apply: true,
@@ -827,6 +832,7 @@ mod tests {
                 pair: None,
                 branch: None,
                 current: false,
+                side: None,
                 stale_after: None,
                 orphaned: true,
                 apply: false,
@@ -853,6 +859,7 @@ mod tests {
                 pair: None,
                 branch: None,
                 current: true,
+                side: None,
                 stale_after: Some("2h".to_owned()),
                 orphaned: false,
                 apply: false,
@@ -872,6 +879,69 @@ mod tests {
             "2h",
         ])
         .expect_err("reject current and branch filters together");
+
+        assert_eq!(error.kind(), clap::error::ErrorKind::ArgumentConflict);
+    }
+
+    #[test]
+    fn parses_prune_claims_side_filter() {
+        let cli = Cli::parse_from([
+            "zaphod",
+            "prune-claims",
+            "--json",
+            "--pair",
+            "api",
+            "--side",
+            "right",
+            "--stale-after",
+            "2h",
+        ]);
+
+        assert_eq!(
+            cli.command,
+            CliCommand::PruneClaims {
+                json: true,
+                agent: None,
+                pair: Some("api".to_owned()),
+                branch: None,
+                current: false,
+                side: Some(PairSide::Right),
+                stale_after: Some("2h".to_owned()),
+                orphaned: false,
+                apply: false,
+            }
+        );
+    }
+
+    #[test]
+    fn prune_claims_side_conflicts_with_branch_filter() {
+        let error = Cli::try_parse_from([
+            "zaphod",
+            "prune-claims",
+            "--side",
+            "left",
+            "--branch",
+            "feature/api",
+            "--stale-after",
+            "2h",
+        ])
+        .expect_err("reject side and branch filters together");
+
+        assert_eq!(error.kind(), clap::error::ErrorKind::ArgumentConflict);
+    }
+
+    #[test]
+    fn prune_claims_side_conflicts_with_current_filter() {
+        let error = Cli::try_parse_from([
+            "zaphod",
+            "prune-claims",
+            "--side",
+            "left",
+            "--current",
+            "--stale-after",
+            "2h",
+        ])
+        .expect_err("reject side and current filters together");
 
         assert_eq!(error.kind(), clap::error::ErrorKind::ArgumentConflict);
     }
