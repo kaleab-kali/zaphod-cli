@@ -19,7 +19,8 @@ Zaphod is in early development. The current `0.1.x` CLI can:
 - Preview a safe switch without changing branches.
 - List, rename, and remove branch pairs.
 - Run preflight checks for humans and coding agents.
-- Assert the expected branch, pair, or pair side before scripted work starts.
+- Assert the expected branch, pair, pair side, or agent claim before scripted
+  work starts or resumes.
 - Claim, heartbeat, and release a pair/branch for an agent session.
 - Emit a handoff snapshot for agent-to-agent continuation.
 - Refuse unsafe switches when the worktree is dirty or Git is mid-operation.
@@ -68,6 +69,7 @@ zaphod claim --agent codex --pair api --stale-after 2h --json
 zaphod heartbeat --agent codex --pair api --side left --json
 zaphod heartbeat --agent codex --pair api --stale-after 2h --json
 zaphod assert --pair api --side left --json
+zaphod assert --pair api --side left --agent codex --require-claim --json
 zaphod handoff --agent codex --require-claim --json
 zaphod handoff --agent codex --side left --stale-after 2h --json
 zaphod status --json
@@ -101,6 +103,7 @@ zaphod claim --agent codex --pair search --json
 zaphod claim --agent codex --pair search --stale-after 2h --json
 # work on the branch
 zaphod preflight --agent codex --require-claim --json
+zaphod assert --pair search --agent codex --require-claim --json
 zaphod heartbeat --agent codex --pair search --json
 zaphod heartbeat --agent codex --pair search --stale-after 2h --json
 zaphod claims --current --json
@@ -412,6 +415,7 @@ zaphod assert --branch feature/api
 zaphod assert --pair api
 zaphod assert --side left
 zaphod assert --pair api --side right --json
+zaphod assert --pair api --agent codex --require-claim --json
 ```
 
 If no selector is provided, `assert` checks that the current branch belongs to
@@ -419,6 +423,11 @@ the default pair. `--side` uses the default pair unless `--pair` is provided.
 
 This command is read-only and is designed for scripts and coding agents that
 need to prove they are in the right place before editing files.
+
+With `--agent`, `assert` also checks claim readiness for the current pair and
+branch. With `--require-claim`, the requested agent must already own that
+claim. This is useful during long-running work because unlike `preflight`, it
+does not require a clean worktree and does not refresh the claim timestamp.
 
 ### `zaphod claim`
 

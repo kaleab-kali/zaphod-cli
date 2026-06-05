@@ -520,6 +520,47 @@ fn assert_json_passes_for_expected_pair_branch_and_side() {
 }
 
 #[test]
+fn assert_json_requires_existing_claim_for_agent_while_dirty() {
+    let dir = TestDir::new("zaphod-cli-metadata");
+    init_repo_with_pair_branches(dir.path());
+    let pair = zaphod(dir.path(), ["pair", "feature/api", "feature/ui"]);
+    assert_success(&pair);
+    let claim = zaphod(dir.path(), ["claim", "--agent", "codex"]);
+    assert_success(&claim);
+    fs::write(dir.path().join("dirty.txt"), "local work\n").expect("write dirty file");
+
+    let output = zaphod(
+        dir.path(),
+        [
+            "assert",
+            "--json",
+            "--pair",
+            "default",
+            "--side",
+            "left",
+            "--agent",
+            "codex",
+            "--require-claim",
+        ],
+    );
+
+    assert_success(&output);
+    let report: serde_json::Value = serde_json::from_slice(&output.stdout).expect("assert json");
+    assert_eq!(report["ok"], true);
+    assert_eq!(report["current_branch"], "feature/api");
+    assert_eq!(report["pair"]["name"], "default");
+    assert_eq!(report["pair"]["current_side"], "left");
+    assert_eq!(report["claim"]["requested_agent"], "codex");
+    assert_eq!(report["claim"]["claim_allowed"], true);
+    assert_eq!(report["claim"]["claim_required"], true);
+    assert_eq!(report["claim"]["claim_owned"], true);
+    assert_eq!(report["claim"]["owned_claim"]["agent"], "codex");
+    assert_eq!(report["claim"]["owned_claim"]["branch"], "feature/api");
+    assert!(report["claim"]["conflict"].is_null());
+    assert_eq!(report["failures"], json!([]));
+}
+
+#[test]
 fn claim_json_records_current_pair_and_branch() {
     let dir = TestDir::new("zaphod-cli-metadata");
     init_repo_with_pair_branches(dir.path());

@@ -587,6 +587,67 @@ fn assert_json_reports_wrong_branch_without_pair_requirement() {
 }
 
 #[test]
+fn assert_json_refuses_missing_required_claim() {
+    let dir = TestDir::new("zaphod-cli-safety");
+    init_repo_with_pair_branches(dir.path());
+    let pair = zaphod(dir.path(), ["pair", "feature/api", "feature/ui"]);
+    assert_success(&pair);
+
+    let output = zaphod(
+        dir.path(),
+        ["assert", "--json", "--agent", "codex", "--require-claim"],
+    );
+
+    assert!(!output.status.success());
+    assert_eq!(output.status.code(), Some(3));
+    let report: serde_json::Value = serde_json::from_slice(&output.stdout).expect("assert json");
+    assert_eq!(report["ok"], false);
+    assert_eq!(report["current_branch"], "feature/api");
+    assert_eq!(report["pair"]["name"], "default");
+    assert_eq!(report["claim"]["requested_agent"], "codex");
+    assert_eq!(report["claim"]["claim_allowed"], true);
+    assert_eq!(report["claim"]["claim_required"], true);
+    assert_eq!(report["claim"]["claim_owned"], false);
+    assert!(report["claim"]["owned_claim"].is_null());
+    assert!(report["claim"]["conflict"].is_null());
+    assert_eq!(report["failures"], json!([]));
+    assert_stderr_contains(
+        &output,
+        "required claim for agent 'codex' on pair 'default' and branch 'feature/api' was not found",
+    );
+}
+
+#[test]
+fn assert_json_refuses_conflicting_claim_for_agent() {
+    let dir = TestDir::new("zaphod-cli-safety");
+    init_repo_with_pair_branches(dir.path());
+    let pair = zaphod(dir.path(), ["pair", "feature/api", "feature/ui"]);
+    assert_success(&pair);
+    let claim = zaphod(dir.path(), ["claim", "--agent", "other"]);
+    assert_success(&claim);
+
+    let output = zaphod(dir.path(), ["assert", "--json", "--agent", "codex"]);
+
+    assert!(!output.status.success());
+    assert_eq!(output.status.code(), Some(3));
+    let report: serde_json::Value = serde_json::from_slice(&output.stdout).expect("assert json");
+    assert_eq!(report["ok"], false);
+    assert_eq!(report["current_branch"], "feature/api");
+    assert_eq!(report["pair"]["name"], "default");
+    assert_eq!(report["claim"]["requested_agent"], "codex");
+    assert_eq!(report["claim"]["claim_allowed"], false);
+    assert_eq!(report["claim"]["claim_required"], false);
+    assert_eq!(report["claim"]["claim_owned"], false);
+    assert_eq!(report["claim"]["conflict"]["agent"], "other");
+    assert_eq!(report["claim"]["conflict"]["branch"], "feature/api");
+    assert_eq!(report["failures"], json!([]));
+    assert_stderr_contains(
+        &output,
+        "pair 'default' on branch 'feature/api' is already claimed by agent 'other'",
+    );
+}
+
+#[test]
 fn claim_json_reports_conflicting_agent() {
     let dir = TestDir::new("zaphod-cli-safety");
     init_repo_with_pair_branches(dir.path());

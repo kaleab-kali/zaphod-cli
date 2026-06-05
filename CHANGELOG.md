@@ -7,6 +7,12 @@ and this project uses semantic versioning for published releases.
 
 ## Unreleased
 
+### Added
+
+- `assert --agent` and `assert --agent --require-claim` for read-only claim
+  ownership checks on the current pair and branch, including while the worktree
+  is dirty.
+
 ## 0.1.31 - 2026-06-05
 
 ### Added

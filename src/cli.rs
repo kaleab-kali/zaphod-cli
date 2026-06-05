@@ -136,6 +136,14 @@ pub enum CliCommand {
         /// Pair side to assert as the current branch.
         #[arg(long)]
         side: Option<PairSide>,
+
+        /// Agent/session name to check for claim conflicts on the current branch.
+        #[arg(long)]
+        agent: Option<String>,
+
+        /// Refuse unless the requested agent already owns the current claim.
+        #[arg(long, requires = "agent")]
+        require_claim: bool,
     },
 
     /// Claim the current pair and branch for an agent session.
@@ -682,7 +690,47 @@ mod tests {
                 pair: Some("api".to_owned()),
                 branch: Some("feature/api".to_owned()),
                 side: Some(PairSide::Left),
+                agent: None,
+                require_claim: false,
             }
+        );
+    }
+
+    #[test]
+    fn parses_assert_agent_claim_guard() {
+        let cli = Cli::parse_from([
+            "zaphod",
+            "assert",
+            "--pair",
+            "api",
+            "--side",
+            "left",
+            "--agent",
+            "codex",
+            "--require-claim",
+        ]);
+
+        assert_eq!(
+            cli.command,
+            CliCommand::Assert {
+                json: false,
+                pair: Some("api".to_owned()),
+                branch: None,
+                side: Some(PairSide::Left),
+                agent: Some("codex".to_owned()),
+                require_claim: true,
+            }
+        );
+    }
+
+    #[test]
+    fn assert_require_claim_requires_agent() {
+        let error = Cli::try_parse_from(["zaphod", "assert", "--require-claim"])
+            .expect_err("reject required claim without agent");
+
+        assert_eq!(
+            error.kind(),
+            clap::error::ErrorKind::MissingRequiredArgument
         );
     }
 
