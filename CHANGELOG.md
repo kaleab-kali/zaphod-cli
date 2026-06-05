@@ -7,6 +7,12 @@ and this project uses semantic versioning for published releases.
 
 ## Unreleased
 
+### Added
+
+- `switch --agent` and `switch --agent --require-claim` for refusing agent
+  switches into target branches claimed by another agent or not yet claimed by
+  the requested agent.
+
 ## 0.1.30 - 2026-06-05
 
 ### Added

@@ -261,6 +261,70 @@ fn switch_dry_run_keeps_safety_refusals() {
 }
 
 #[test]
+fn switch_json_refuses_missing_required_target_claim() {
+    let dir = TestDir::new("zaphod-cli-safety");
+    init_repo_with_pair_branches(dir.path());
+    let pair = zaphod(dir.path(), ["pair", "feature/api", "feature/ui"]);
+    assert_success(&pair);
+
+    let output = zaphod(
+        dir.path(),
+        ["switch", "--json", "--agent", "codex", "--require-claim"],
+    );
+
+    assert!(!output.status.success());
+    assert_eq!(output.status.code(), Some(3));
+    let report: serde_json::Value = serde_json::from_slice(&output.stdout).expect("switch json");
+    assert_eq!(report["ok"], false);
+    assert_eq!(report["switched"], false);
+    assert_eq!(report["current"], "feature/api");
+    assert_eq!(report["target"], "feature/ui");
+    assert_eq!(report["target_claim"]["requested_agent"], "codex");
+    assert_eq!(report["target_claim"]["claim_allowed"], true);
+    assert_eq!(report["target_claim"]["claim_required"], true);
+    assert_eq!(report["target_claim"]["claim_owned"], false);
+    assert!(report["target_claim"]["owned_claim"].is_null());
+    assert!(report["target_claim"]["conflict"].is_null());
+    assert_stderr_contains(
+        &output,
+        "required claim for agent 'codex' on pair 'default' and branch 'feature/ui' was not found",
+    );
+    assert_eq!(current_branch(dir.path()), "feature/api");
+}
+
+#[test]
+fn switch_json_refuses_claimed_target_branch_for_agent() {
+    let dir = TestDir::new("zaphod-cli-safety");
+    init_repo_with_pair_branches(dir.path());
+    let pair = zaphod(dir.path(), ["pair", "feature/api", "feature/ui"]);
+    assert_success(&pair);
+    git(dir.path(), ["switch", "feature/ui"]);
+    let claim = zaphod(dir.path(), ["claim", "--agent", "other"]);
+    assert_success(&claim);
+    git(dir.path(), ["switch", "feature/api"]);
+
+    let output = zaphod(dir.path(), ["switch", "--json", "--agent", "codex"]);
+
+    assert!(!output.status.success());
+    assert_eq!(output.status.code(), Some(3));
+    let report: serde_json::Value = serde_json::from_slice(&output.stdout).expect("switch json");
+    assert_eq!(report["ok"], false);
+    assert_eq!(report["switched"], false);
+    assert_eq!(report["target"], "feature/ui");
+    assert_eq!(report["target_claim"]["requested_agent"], "codex");
+    assert_eq!(report["target_claim"]["claim_allowed"], false);
+    assert_eq!(report["target_claim"]["claim_required"], false);
+    assert_eq!(report["target_claim"]["claim_owned"], false);
+    assert_eq!(report["target_claim"]["conflict"]["agent"], "other");
+    assert_eq!(report["target_claim"]["conflict"]["branch"], "feature/ui");
+    assert_stderr_contains(
+        &output,
+        "pair 'default' on branch 'feature/ui' is already claimed by agent 'other'",
+    );
+    assert_eq!(current_branch(dir.path()), "feature/api");
+}
+
+#[test]
 fn preflight_json_reports_dirty_refusal() {
     let dir = TestDir::new("zaphod-cli-safety");
     init_repo_with_pair_branches(dir.path());

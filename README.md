@@ -15,6 +15,7 @@ Zaphod is in early development. The current `0.1.x` CLI can:
 - Pair two branches in repo-local metadata.
 - Show the active pair status.
 - Switch to the paired branch.
+- Guard agent switches against target-branch claim conflicts.
 - Preview a safe switch without changing branches.
 - List, rename, and remove branch pairs.
 - Run preflight checks for humans and coding agents.
@@ -71,6 +72,7 @@ zaphod handoff --agent codex --require-claim --json
 zaphod handoff --agent codex --side left --stale-after 2h --json
 zaphod status --json
 zaphod switch --dry-run --json
+zaphod switch --agent codex --require-claim --json
 zaphod doctor --json
 ```
 
@@ -119,6 +121,12 @@ zaphod unclaim --agent codex --pair search --side left
 Claims are local metadata only. They do not lock Git, modify branches, or delete
 anything. They make accidental overlap visible so another agent can refuse to
 start on the same pair and branch.
+
+Agent-aware switching extends that refusal to branch movement. With
+`zaphod switch --agent codex`, Zaphod checks the target branch before switching
+and refuses if another agent owns that pair/branch claim. With
+`--require-claim`, the target branch must already be claimed by the requested
+agent before the switch can happen.
 
 Stale-claim filters help automation notice abandoned sessions after crashes,
 terminal closes, or interrupted agent runs. They are read-only, so cleanup
@@ -649,11 +657,23 @@ zaphod switch --dry-run
 
 Dry-run mode applies the same safety checks as a real switch.
 
+For agent sessions, `--agent` checks the target branch claim before switching:
+
+```sh
+zaphod switch --agent codex
+zaphod switch --agent codex --require-claim
+```
+
+With `--agent`, Zaphod refuses to switch into the target branch when another
+agent owns that pair/branch claim. With `--require-claim`, the requested agent
+must already own the target branch claim before the switch can happen.
+
 For scripts, use JSON output:
 
 ```sh
 zaphod switch --json
 zaphod switch --dry-run --json
+zaphod switch --agent codex --require-claim --json
 ```
 
 When switching is refused, JSON output still reports the pair, current branch,

@@ -36,8 +36,10 @@ pub fn run(cli: Cli) -> Result<(), AppError> {
         CliCommand::Switch {
             json,
             dry_run,
+            agent,
+            require_claim,
             name,
-        } => switch_branches(&name, json, dry_run),
+        } => switch_branches(&name, json, dry_run, agent, require_claim),
         CliCommand::Preflight {
             json,
             name,
@@ -352,7 +354,16 @@ fn show_all_statuses(json: bool) -> Result<(), AppError> {
     Ok(())
 }
 
-fn switch_branches(name: &str, json: bool, dry_run: bool) -> Result<(), AppError> {
+fn switch_branches(
+    name: &str,
+    json: bool,
+    dry_run: bool,
+    agent: Option<String>,
+    require_claim: bool,
+) -> Result<(), AppError> {
+    if let Some(agent) = &agent {
+        validate_agent_name(agent)?;
+    }
     let context = load_status_context(name)?;
     let mut report = SwitchReport::from_status_context(&context, dry_run);
 
@@ -365,6 +376,63 @@ fn switch_branches(name: &str, json: bool, dry_run: bool) -> Result<(), AppError
         });
     }
 
+    if let Some(agent) = agent {
+        let claim_report = build_claim_report_for_scope(
+            &context.repository,
+            &context.status.pair,
+            &context.status.other,
+            agent,
+            require_claim,
+            None,
+        )?;
+        let conflict = claim_report.conflict.clone();
+        let claim_blocked = if conflict.is_none() && !claim_report.metadata_lock.ok {
+            Some(AppError::ClaimBlocked {
+                agent: claim_report.requested_agent.clone(),
+                pair: context.status.pair.clone(),
+                branch: context.status.other.clone(),
+                reason: metadata_lock_block_reason(&claim_report.metadata_lock),
+            })
+        } else {
+            None
+        };
+        let claim_required = if require_claim && conflict.is_none() && !claim_report.claim_owned {
+            Some(AppError::ClaimRequired {
+                agent: claim_report.requested_agent.clone(),
+                pair: context.status.pair.clone(),
+                branch: context.status.other.clone(),
+            })
+        } else {
+            None
+        };
+        report.ok =
+            report.ok && claim_report.claim_allowed && (!require_claim || claim_report.claim_owned);
+        report.target_claim = Some(claim_report);
+
+        if let Some(conflict) = conflict {
+            if json {
+                println!("{}", serde_json::to_string_pretty(&report)?);
+            }
+            return Err(AppError::ClaimConflict {
+                agent: conflict.agent,
+                pair: conflict.pair,
+                branch: conflict.branch,
+            });
+        }
+        if let Some(error) = claim_blocked {
+            if json {
+                println!("{}", serde_json::to_string_pretty(&report)?);
+            }
+            return Err(error);
+        }
+        if let Some(error) = claim_required {
+            if json {
+                println!("{}", serde_json::to_string_pretty(&report)?);
+            }
+            return Err(error);
+        }
+    }
+
     if dry_run {
         if json {
             println!("{}", serde_json::to_string_pretty(&report)?);
@@ -373,6 +441,7 @@ fn switch_branches(name: &str, json: bool, dry_run: bool) -> Result<(), AppError
                 "Would switch pair '{}': {} -> {}",
                 context.status.pair, context.status.current, context.status.other
             );
+            print_switch_target_claim(&report);
         }
         return Ok(());
     }
@@ -387,6 +456,7 @@ fn switch_branches(name: &str, json: bool, dry_run: bool) -> Result<(), AppError
             "Switched pair '{}': {} -> {}",
             context.status.pair, context.status.current, context.status.other
         );
+        print_switch_target_claim(&report);
     }
 
     Ok(())
@@ -502,15 +572,29 @@ fn build_preflight_claim_report(
     claim_required: bool,
     stale_after_seconds: Option<u64>,
 ) -> Result<PreflightClaimReport, AppError> {
-    let store = ClaimStore::for_repository(&context.repository);
+    build_claim_report_for_scope(
+        &context.repository,
+        &context.status.pair,
+        &context.status.current,
+        agent,
+        claim_required,
+        stale_after_seconds,
+    )
+}
+
+fn build_claim_report_for_scope(
+    repository: &GitRepository,
+    pair: &str,
+    branch: &str,
+    agent: String,
+    claim_required: bool,
+    stale_after_seconds: Option<u64>,
+) -> Result<PreflightClaimReport, AppError> {
+    let store = ClaimStore::for_repository(repository);
     let metadata_lock = build_metadata_lock_report(&store.lock_path());
     let claims = store.load()?;
-    let conflict = claims
-        .conflict_for_scope(&agent, &context.status.pair, &context.status.current)
-        .cloned();
-    let owned_claim = claims
-        .get_for_scope(&agent, &context.status.pair, &context.status.current)
-        .cloned();
+    let conflict = claims.conflict_for_scope(&agent, pair, branch).cloned();
+    let owned_claim = claims.get_for_scope(&agent, pair, branch).cloned();
     let now_unix = if stale_after_seconds.is_some() && conflict.is_some() {
         Some(current_unix_timestamp()?)
     } else {
@@ -2117,6 +2201,36 @@ fn print_preflight_report(report: &PreflightReport) {
     }
 }
 
+fn print_switch_target_claim(report: &SwitchReport) {
+    let Some(claim) = &report.target_claim else {
+        return;
+    };
+
+    if claim.claim_owned {
+        println!(
+            "Target claim: owned by {} on {}",
+            claim.requested_agent, report.target
+        );
+    } else if claim.claim_required {
+        println!(
+            "Target claim: missing for {} on {}",
+            claim.requested_agent, report.target
+        );
+    } else if claim.claim_allowed {
+        println!(
+            "Target claim: allowed for {} on {}",
+            claim.requested_agent, report.target
+        );
+    } else if let Some(conflict) = &claim.conflict {
+        println!(
+            "Target claim: refused ({} is claimed by {})",
+            report.target, conflict.agent
+        );
+    } else {
+        println!("Target claim: refused");
+    }
+}
+
 fn print_assert_report(report: &AssertReport) {
     println!("Assert: {}", if report.ok { "passed" } else { "failed" });
     println!("Repository: {}", report.repository_root);
@@ -2452,6 +2566,7 @@ struct SwitchReport {
     worktree: WorktreeStatus,
     git_state: GitState,
     refusal_reasons: Vec<RefusalReason>,
+    target_claim: Option<PreflightClaimReport>,
 }
 
 impl SwitchReport {
@@ -2467,6 +2582,7 @@ impl SwitchReport {
             worktree: context.status.worktree,
             git_state: context.status.git_state,
             refusal_reasons: context.status.refusal_reasons.clone(),
+            target_claim: None,
         }
     }
 }
