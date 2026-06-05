@@ -7,6 +7,8 @@ and this project uses semantic versioning for published releases.
 
 ## Unreleased
 
+## 0.1.31 - 2026-06-05
+
 ### Added
 
 - `switch --agent` and `switch --agent --require-claim` for refusing agent
