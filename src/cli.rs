@@ -75,6 +75,14 @@ pub enum CliCommand {
         #[arg(long)]
         dry_run: bool,
 
+        /// Agent/session name to check before switching into the target branch.
+        #[arg(long)]
+        agent: Option<String>,
+
+        /// Refuse unless the requested agent already owns the target branch claim.
+        #[arg(long, requires = "agent")]
+        require_claim: bool,
+
         /// Pair name.
         #[arg(long, default_value = "default")]
         name: String,
@@ -531,6 +539,8 @@ mod tests {
             CliCommand::Switch {
                 json: false,
                 dry_run: false,
+                agent: None,
+                require_claim: false,
                 name: "review".to_owned(),
             }
         );
@@ -545,8 +555,37 @@ mod tests {
             CliCommand::Switch {
                 json: true,
                 dry_run: true,
+                agent: None,
+                require_claim: false,
                 name: "default".to_owned(),
             }
+        );
+    }
+
+    #[test]
+    fn parses_switch_agent_claim_guard() {
+        let cli = Cli::parse_from(["zaphod", "switch", "--agent", "codex", "--require-claim"]);
+
+        assert_eq!(
+            cli.command,
+            CliCommand::Switch {
+                json: false,
+                dry_run: false,
+                agent: Some("codex".to_owned()),
+                require_claim: true,
+                name: "default".to_owned(),
+            }
+        );
+    }
+
+    #[test]
+    fn switch_require_claim_requires_agent() {
+        let error = Cli::try_parse_from(["zaphod", "switch", "--require-claim"])
+            .expect_err("reject required target claim without agent");
+
+        assert_eq!(
+            error.kind(),
+            clap::error::ErrorKind::MissingRequiredArgument
         );
     }
 

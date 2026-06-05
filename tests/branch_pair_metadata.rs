@@ -1508,6 +1508,41 @@ fn switch_json_dry_run_reports_target_without_switching() {
 }
 
 #[test]
+fn switch_json_requires_existing_target_claim_for_agent() {
+    let dir = TestDir::new("zaphod-cli-metadata");
+    init_repo_with_pair_branches(dir.path());
+    let pair = zaphod(dir.path(), ["pair", "feature/api", "feature/ui"]);
+    assert_success(&pair);
+    git(dir.path(), ["switch", "feature/ui"]);
+    let claim = zaphod(dir.path(), ["claim", "--agent", "codex"]);
+    assert_success(&claim);
+    git(dir.path(), ["switch", "feature/api"]);
+
+    let output = zaphod(
+        dir.path(),
+        ["switch", "--json", "--agent", "codex", "--require-claim"],
+    );
+
+    assert_success(&output);
+    let report: serde_json::Value = serde_json::from_slice(&output.stdout).expect("switch json");
+    assert_eq!(report["ok"], true);
+    assert_eq!(report["switched"], true);
+    assert_eq!(report["current"], "feature/api");
+    assert_eq!(report["target"], "feature/ui");
+    assert_eq!(report["target_claim"]["requested_agent"], "codex");
+    assert_eq!(report["target_claim"]["claim_allowed"], true);
+    assert_eq!(report["target_claim"]["claim_required"], true);
+    assert_eq!(report["target_claim"]["claim_owned"], true);
+    assert_eq!(report["target_claim"]["owned_claim"]["agent"], "codex");
+    assert_eq!(
+        report["target_claim"]["owned_claim"]["branch"],
+        "feature/ui"
+    );
+    assert!(report["target_claim"]["conflict"].is_null());
+    assert_eq!(current_branch(dir.path()), "feature/ui");
+}
+
+#[test]
 fn switch_refuses_dirty_worktree() {
     let dir = TestDir::new("zaphod-cli-metadata");
     init_repo_with_pair_branches(dir.path());
