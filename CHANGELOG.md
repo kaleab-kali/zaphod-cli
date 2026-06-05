@@ -7,6 +7,8 @@ and this project uses semantic versioning for published releases.
 
 ## Unreleased
 
+## 0.1.32 - 2026-06-05
+
 ### Added
 
 - `assert --agent` and `assert --agent --require-claim` for read-only claim
