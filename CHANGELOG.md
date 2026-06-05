@@ -7,6 +7,8 @@ and this project uses semantic versioning for published releases.
 
 ## Unreleased
 
+## 0.1.30 - 2026-06-05
+
 ### Added
 
 - `handoff --require-claim` for read-only continuation snapshots that refuse
