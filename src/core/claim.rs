@@ -10,6 +10,8 @@ pub struct AgentClaim {
     pub pair: String,
     pub branch: String,
     pub created_at_unix: u64,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub note: Option<String>,
 }
 
 impl AgentClaim {
@@ -19,15 +21,29 @@ impl AgentClaim {
         branch: String,
         created_at_unix: u64,
     ) -> Result<Self, ClaimError> {
+        Self::new_with_note(agent, pair, branch, created_at_unix, None)
+    }
+
+    pub fn new_with_note(
+        agent: String,
+        pair: String,
+        branch: String,
+        created_at_unix: u64,
+        note: Option<String>,
+    ) -> Result<Self, ClaimError> {
         validate_agent_name(&agent)?;
         validate_non_empty("pair", &pair)?;
         validate_non_empty("branch", &branch)?;
+        if let Some(note) = &note {
+            validate_claim_note(note)?;
+        }
 
         Ok(Self {
             agent,
             pair,
             branch,
             created_at_unix,
+            note,
         })
     }
 }
@@ -105,6 +121,8 @@ fn metadata_schema_version() -> u32 {
 pub enum ClaimError {
     EmptyField { field: &'static str },
     InvalidAgent { agent: String },
+    InvalidNote,
+    NoteTooLong { max_chars: usize },
 }
 
 impl Display for ClaimError {
@@ -114,6 +132,11 @@ impl Display for ClaimError {
             Self::InvalidAgent { agent } => write!(
                 formatter,
                 "agent name '{agent}' must contain only letters, numbers, '.', '_', or '-'"
+            ),
+            Self::InvalidNote => write!(formatter, "claim note cannot contain control characters"),
+            Self::NoteTooLong { max_chars } => write!(
+                formatter,
+                "claim note cannot be longer than {max_chars} characters"
             ),
         }
     }
@@ -133,6 +156,24 @@ pub fn validate_agent_name(agent: &str) -> Result<(), ClaimError> {
         return Err(ClaimError::InvalidAgent {
             agent: agent.to_owned(),
         });
+    }
+
+    Ok(())
+}
+
+pub fn validate_claim_note(note: &str) -> Result<(), ClaimError> {
+    const MAX_CLAIM_NOTE_CHARS: usize = 240;
+
+    if note.trim().is_empty() {
+        return Err(ClaimError::EmptyField { field: "note" });
+    }
+    if note.chars().count() > MAX_CLAIM_NOTE_CHARS {
+        return Err(ClaimError::NoteTooLong {
+            max_chars: MAX_CLAIM_NOTE_CHARS,
+        });
+    }
+    if note.chars().any(char::is_control) {
+        return Err(ClaimError::InvalidNote);
     }
 
     Ok(())
@@ -180,6 +221,62 @@ mod tests {
                 agent: "bad/name".to_owned()
             }
         );
+    }
+
+    #[test]
+    fn claim_can_store_a_note() {
+        let claim = AgentClaim::new_with_note(
+            "codex".to_owned(),
+            "default".to_owned(),
+            "feature/api".to_owned(),
+            42,
+            Some("implementing API handler".to_owned()),
+        )
+        .expect("valid claim note");
+
+        assert_eq!(claim.note.as_deref(), Some("implementing API handler"));
+    }
+
+    #[test]
+    fn claim_note_rejects_control_characters() {
+        let error = AgentClaim::new_with_note(
+            "codex".to_owned(),
+            "default".to_owned(),
+            "feature/api".to_owned(),
+            42,
+            Some("bad\nnote".to_owned()),
+        )
+        .expect_err("reject control character in note");
+
+        assert_eq!(error, ClaimError::InvalidNote);
+    }
+
+    #[test]
+    fn claim_note_rejects_blank_values() {
+        let error = AgentClaim::new_with_note(
+            "codex".to_owned(),
+            "default".to_owned(),
+            "feature/api".to_owned(),
+            42,
+            Some("   ".to_owned()),
+        )
+        .expect_err("reject blank note");
+
+        assert_eq!(error, ClaimError::EmptyField { field: "note" });
+    }
+
+    #[test]
+    fn claim_note_rejects_overlong_values() {
+        let error = AgentClaim::new_with_note(
+            "codex".to_owned(),
+            "default".to_owned(),
+            "feature/api".to_owned(),
+            42,
+            Some("a".repeat(241)),
+        )
+        .expect_err("reject overlong note");
+
+        assert_eq!(error, ClaimError::NoteTooLong { max_chars: 240 });
     }
 
     #[test]

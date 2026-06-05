@@ -1,7 +1,8 @@
 use crate::cli::{Cli, CliCommand, PairSide};
 use crate::core::{
     AgentClaim, BranchPair, BranchPairs, ClaimError, GitState, PairError, PairStatus,
-    RefusalReason, StatusError, WorktreeStatus, validate_agent_name, validate_pair_name,
+    RefusalReason, StatusError, WorktreeStatus, validate_agent_name, validate_claim_note,
+    validate_pair_name,
 };
 use crate::git::{GitError, GitRepository};
 use crate::metadata::{ClaimStore, MetadataError, MetadataStore};
@@ -63,16 +64,18 @@ pub fn run(cli: Cli) -> Result<(), AppError> {
             pair,
             branch,
             side,
+            note,
             stale_after,
-        } => claim_current_scope(json, agent, pair, branch, side, stale_after),
+        } => claim_current_scope(json, agent, pair, branch, side, note, stale_after),
         CliCommand::Heartbeat {
             json,
             agent,
             pair,
             branch,
             side,
+            note,
             stale_after,
-        } => heartbeat_claim(json, agent, pair, branch, side, stale_after),
+        } => heartbeat_claim(json, agent, pair, branch, side, note, stale_after),
         CliCommand::Claims {
             json,
             agent,
@@ -845,9 +848,13 @@ fn claim_current_scope(
     pair_name: String,
     expected_branch: Option<String>,
     expected_side: Option<PairSide>,
+    note: Option<String>,
     stale_after: Option<String>,
 ) -> Result<(), AppError> {
     validate_agent_name(&agent)?;
+    if let Some(note) = &note {
+        validate_claim_note(note)?;
+    }
     let stale_after_seconds = stale_after
         .as_deref()
         .map(parse_duration_seconds)
@@ -945,11 +952,15 @@ fn claim_current_scope(
         });
     }
 
-    let claim = AgentClaim::new(
+    let existing_note = claims
+        .get_for_scope(&agent, &context.status.pair, &context.status.current)
+        .and_then(|claim| claim.note.clone());
+    let claim = AgentClaim::new_with_note(
         agent,
         context.status.pair,
         context.status.current,
         current_unix_timestamp()?,
+        note.or(existing_note),
     )?;
     claims.upsert(claim.clone());
     store.save(&claims)?;
@@ -980,9 +991,13 @@ fn heartbeat_claim(
     pair_name: String,
     expected_branch: Option<String>,
     expected_side: Option<PairSide>,
+    note: Option<String>,
     stale_after: Option<String>,
 ) -> Result<(), AppError> {
     validate_agent_name(&agent)?;
+    if let Some(note) = &note {
+        validate_claim_note(note)?;
+    }
     let stale_after_seconds = stale_after
         .as_deref()
         .map(parse_duration_seconds)
@@ -1059,19 +1074,21 @@ fn heartbeat_claim(
         });
     }
 
-    claims
+    let previous_claim = claims
         .get_for_scope(&agent, &context.status.pair, &context.status.current)
+        .cloned()
         .ok_or_else(|| AppError::ClaimNotFound {
             agent: agent.clone(),
             pair: context.status.pair.clone(),
             branch: context.status.current.clone(),
         })?;
 
-    let claim = AgentClaim::new(
+    let claim = AgentClaim::new_with_note(
         agent,
         context.status.pair,
         context.status.current,
         current_unix_timestamp()?,
+        note.or(previous_claim.note),
     )?;
     claims.upsert(claim.clone());
     store.save(&claims)?;
@@ -1903,10 +1920,7 @@ fn print_doctor_report(report: &DoctorReport) {
                 );
                 if !claims.stale_claims.is_empty() {
                     for claim in &claims.stale_claims {
-                        println!(
-                            "- {}: {} on {} (created_at_unix: {})",
-                            claim.agent, claim.pair, claim.branch, claim.created_at_unix
-                        );
+                        println!("{}", format_claim_line(claim));
                     }
                 }
             }
@@ -2386,9 +2400,17 @@ fn print_claim_operation_report(report: &ClaimOperationReport, json: bool) -> Re
     println!("Agent: {}", report.agent);
     println!("Pair: {}", report.pair);
     println!("Branch: {}", report.branch);
+    if let Some(claim) = &report.claim
+        && let Some(note) = &claim.note
+    {
+        println!("Note: {note}");
+    }
 
     if let Some(conflict) = &report.conflict {
         println!("Conflict: claimed by {}", conflict.agent);
+        if let Some(note) = &conflict.note {
+            println!("Conflict note: {note}");
+        }
         if let Some(conflict_stale) = report.conflict_stale {
             println!("Conflict stale: {conflict_stale}");
         }
@@ -2446,10 +2468,7 @@ fn print_claims_report(report: &ClaimsReport) {
 
     println!("Claims:");
     for claim in &report.claims {
-        println!(
-            "- {}: {} on {} (created_at_unix: {})",
-            claim.agent, claim.pair, claim.branch, claim.created_at_unix
-        );
+        println!("{}", format_claim_line(claim));
     }
 }
 
@@ -2486,10 +2505,7 @@ fn print_prune_claims_report(report: &PruneClaimsReport, json: bool) -> Result<(
 
     println!("Matched claims:");
     for claim in &report.pruned_claims {
-        println!(
-            "- {}: {} on {} (created_at_unix: {})",
-            claim.agent, claim.pair, claim.branch, claim.created_at_unix
-        );
+        println!("{}", format_claim_line(claim));
     }
     if !report.pruned_claim_issues.is_empty() {
         println!("Orphaned claim issues:");
@@ -2587,10 +2603,7 @@ fn print_handoff_report(report: &HandoffReport, json: bool) -> Result<(), AppErr
     } else {
         println!("Claims:");
         for claim in &report.claims {
-            println!(
-                "- {}: {} on {} (created_at_unix: {})",
-                claim.agent, claim.pair, claim.branch, claim.created_at_unix
-            );
+            println!("{}", format_claim_line(claim));
         }
     }
 
@@ -2599,6 +2612,18 @@ fn print_handoff_report(report: &HandoffReport, json: bool) -> Result<(), AppErr
     }
 
     Ok(())
+}
+
+fn format_claim_line(claim: &AgentClaim) -> String {
+    let mut line = format!(
+        "- {}: {} on {} (created_at_unix: {})",
+        claim.agent, claim.pair, claim.branch, claim.created_at_unix
+    );
+    if let Some(note) = &claim.note {
+        line.push_str(" note: ");
+        line.push_str(note);
+    }
+    line
 }
 
 fn format_branch_health(left_exists: bool, right_exists: bool, left: &str, right: &str) -> String {

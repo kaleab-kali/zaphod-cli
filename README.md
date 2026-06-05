@@ -64,9 +64,9 @@ zaphod preflight --agent codex --json
 zaphod preflight --agent codex --branch feature/api --side left --json
 zaphod preflight --agent codex --require-claim --json
 zaphod preflight --agent codex --stale-after 2h --json
-zaphod claim --agent codex --pair api --side left --json
+zaphod claim --agent codex --pair api --side left --note "editing API routes" --json
 zaphod claim --agent codex --pair api --stale-after 2h --json
-zaphod heartbeat --agent codex --pair api --side left --json
+zaphod heartbeat --agent codex --pair api --side left --note "adding tests" --json
 zaphod heartbeat --agent codex --pair api --stale-after 2h --json
 zaphod assert --pair api --side left --json
 zaphod assert --pair api --side left --agent codex --require-claim --json
@@ -99,12 +99,12 @@ When several agents, scripts, or terminals may touch the same repository,
 claims add a lightweight coordination layer:
 
 ```sh
-zaphod claim --agent codex --pair search --json
+zaphod claim --agent codex --pair search --note "backend search endpoint" --json
 zaphod claim --agent codex --pair search --stale-after 2h --json
 # work on the branch
 zaphod preflight --agent codex --require-claim --json
 zaphod assert --pair search --agent codex --require-claim --json
-zaphod heartbeat --agent codex --pair search --json
+zaphod heartbeat --agent codex --pair search --note "writing regression tests" --json
 zaphod heartbeat --agent codex --pair search --stale-after 2h --json
 zaphod claims --current --json
 zaphod claims --conflicts-for codex --current --json
@@ -124,6 +124,10 @@ zaphod unclaim --agent codex --pair search --side left
 Claims are local metadata only. They do not lock Git, modify branches, or delete
 anything. They make accidental overlap visible so another agent can refuse to
 start on the same pair and branch.
+
+Use `--note` on `claim` or `heartbeat` when an agent should leave short local
+context for the next person or process that sees the claim. Notes are optional,
+stored in repo-local metadata, and surfaced in JSON claim reports.
 
 Agent-aware switching extends that refusal to branch movement. With
 `zaphod switch --agent codex`, Zaphod checks the target branch before switching
@@ -436,6 +440,7 @@ Claim the current pair and branch for an agent session:
 ```sh
 zaphod claim --agent codex --pair api
 zaphod claim --agent codex --pair api --json
+zaphod claim --agent codex --pair api --note "editing API routes" --json
 zaphod claim --agent codex --pair api --side left --json
 zaphod claim --agent codex --pair api --stale-after 2h --json
 ```
@@ -447,6 +452,10 @@ is dirty, Git is mid-merge or mid-rebase, the current branch is outside the
 pair, or the paired target branch is missing.
 
 Agent names may contain only letters, numbers, `.`, `_`, and `-`.
+
+Use `--note` to attach short local context to the claim. Notes are optional,
+must be non-blank, cannot contain control characters, and are limited to 240
+characters.
 
 Use `--branch` or `--side` when the claim should only be written from a specific
 branch or pair side. This lets an agent combine "am I in the right place?" and
@@ -463,6 +472,7 @@ Refresh an existing agent session claim for the current pair and branch:
 ```sh
 zaphod heartbeat --agent codex --pair api
 zaphod heartbeat --agent codex --pair api --json
+zaphod heartbeat --agent codex --pair api --note "adding tests" --json
 zaphod heartbeat --agent codex --pair api --side left --json
 zaphod heartbeat --agent codex --pair api --stale-after 2h --json
 ```
@@ -475,6 +485,9 @@ change Git history.
 
 Unlike `claim`, `heartbeat` can run while the worktree is dirty. This lets an
 agent refresh its own claim while it is actively editing files.
+
+Use `--note` to replace the existing claim note while refreshing the timestamp.
+When no note is provided, `heartbeat` preserves the existing note.
 
 Use `--branch` or `--side` to refuse the refresh unless the current branch is
 still the expected branch or pair side.
