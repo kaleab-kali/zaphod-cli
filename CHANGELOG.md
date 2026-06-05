@@ -7,6 +7,11 @@ and this project uses semantic versioning for published releases.
 
 ## Unreleased
 
+### Added
+
+- `handoff --require-claim` for read-only continuation snapshots that refuse
+  unless the requested agent already owns the current pair and branch claim.
+
 ## 0.1.29 - 2026-06-05
 
 ### Added

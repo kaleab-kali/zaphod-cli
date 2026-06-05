@@ -122,8 +122,9 @@ pub fn run(cli: Cli) -> Result<(), AppError> {
             branch,
             side,
             agent,
+            require_claim,
             stale_after,
-        } => show_handoff(json, name, branch, side, agent, stale_after),
+        } => show_handoff(json, name, branch, side, agent, require_claim, stale_after),
         CliCommand::Doctor { json, stale_after } => run_doctor(json, stale_after),
         CliCommand::Completions { shell } => generate_completions(shell),
     }
@@ -1246,6 +1247,7 @@ fn show_handoff(
     expected_branch: Option<String>,
     expected_side: Option<PairSide>,
     agent: Option<String>,
+    require_claim: bool,
     stale_after: Option<String>,
 ) -> Result<(), AppError> {
     if let Some(agent) = &agent {
@@ -1375,11 +1377,30 @@ fn show_handoff(
             })
         });
         let metadata_lock = build_metadata_lock_report(&claim_store.lock_path());
+        let required_claim_error = if require_claim {
+            if let Some(conflict) = &conflict {
+                Some(AppError::ClaimConflict {
+                    agent: conflict.agent.clone(),
+                    pair: conflict.pair.clone(),
+                    branch: conflict.branch.clone(),
+                })
+            } else if owned_claim.is_none() {
+                Some(AppError::ClaimRequired {
+                    agent: agent.clone(),
+                    pair: claim_pair.clone(),
+                    branch: claim_branch.clone(),
+                })
+            } else {
+                None
+            }
+        } else {
+            None
+        };
 
         report.claim = Some(PreflightClaimReport {
             requested_agent: agent,
             claim_allowed: conflict.is_none() && metadata_lock.ok,
-            claim_required: false,
+            claim_required: require_claim,
             claim_owned: owned_claim.is_some(),
             owned_claim,
             metadata_lock,
@@ -1387,6 +1408,10 @@ fn show_handoff(
             conflict_stale,
             conflict,
         });
+
+        if let Some(error) = required_claim_error {
+            return finish_handoff_with_error(report, error, json);
+        }
     }
 
     report.ok = true;
@@ -2336,7 +2361,11 @@ fn print_handoff_report(report: &HandoffReport, json: bool) -> Result<(), AppErr
     }
 
     if let Some(claim) = &report.claim {
-        if claim.claim_allowed {
+        if claim.claim_required && claim.claim_owned {
+            println!("Claim: owned by {}", claim.requested_agent);
+        } else if claim.claim_required && !claim.claim_owned && claim.conflict.is_none() {
+            println!("Claim: missing for {}", claim.requested_agent);
+        } else if claim.claim_allowed {
             println!("Claim: allowed for {}", claim.requested_agent);
         } else if let Some(conflict) = &claim.conflict {
             let stale = match (claim.conflict_stale, claim.stale_after_seconds) {
