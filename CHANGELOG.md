@@ -7,6 +7,11 @@ and this project uses semantic versioning for published releases.
 
 ## Unreleased
 
+### Added
+
+- `claim --note` and `heartbeat --note` for attaching short local context to
+  agent claims while preserving notes across refreshes.
+
 ## 0.1.32 - 2026-06-05
 
 ### Added

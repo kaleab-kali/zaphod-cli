@@ -653,7 +653,16 @@ fn claim_json_reports_conflicting_agent() {
     init_repo_with_pair_branches(dir.path());
     let pair = zaphod(dir.path(), ["pair", "feature/api", "feature/ui"]);
     assert_success(&pair);
-    let claim = zaphod(dir.path(), ["claim", "--agent", "codex"]);
+    let claim = zaphod(
+        dir.path(),
+        [
+            "claim",
+            "--agent",
+            "codex",
+            "--note",
+            "implementing API handler",
+        ],
+    );
     assert_success(&claim);
 
     let output = zaphod(dir.path(), ["claim", "--json", "--agent", "other"]);
@@ -667,6 +676,7 @@ fn claim_json_reports_conflicting_agent() {
     assert_eq!(report["pair"], "default");
     assert_eq!(report["branch"], "feature/api");
     assert_eq!(report["conflict"]["agent"], "codex");
+    assert_eq!(report["conflict"]["note"], "implementing API handler");
     assert_stderr_contains(
         &output,
         "pair 'default' on branch 'feature/api' is already claimed by agent 'codex'",
@@ -1024,6 +1034,27 @@ fn claim_rejects_invalid_agent_name() {
         &output,
         "agent name 'bad/name' must contain only letters, numbers, '.', '_', or '-'",
     );
+}
+
+#[test]
+fn claim_rejects_invalid_note() {
+    let dir = TestDir::new("zaphod-cli-safety");
+    init_repo_with_pair_branches(dir.path());
+
+    let output = zaphod(dir.path(), ["claim", "--agent", "codex", "--note", ""]);
+
+    assert!(!output.status.success());
+    assert_eq!(output.status.code(), Some(2));
+    assert_stderr_contains(&output, "note cannot be empty");
+
+    let output = zaphod(
+        dir.path(),
+        ["claim", "--agent", "codex", "--note", "bad\nnote"],
+    );
+
+    assert!(!output.status.success());
+    assert_eq!(output.status.code(), Some(2));
+    assert_stderr_contains(&output, "claim note cannot contain control characters");
 }
 
 #[test]
