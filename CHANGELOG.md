@@ -7,6 +7,8 @@ and this project uses semantic versioning for published releases.
 
 ## Unreleased
 
+## 0.1.33 - 2026-06-06
+
 ### Added
 
 - `claim --note` and `heartbeat --note` for attaching short local context to
