@@ -7,6 +7,8 @@ and this project uses semantic versioning for published releases.
 
 ## Unreleased
 
+## 0.1.37 - 2026-06-19
+
 ### Added
 
 - Agent handoff JSON now includes `target_claim` readiness when `--agent` is
