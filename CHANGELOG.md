@@ -7,6 +7,8 @@ and this project uses semantic versioning for published releases.
 
 ## Unreleased
 
+## 0.1.35 - 2026-06-19
+
 ### Added
 
 - `claims --target` for listing claims on the paired target branch without
