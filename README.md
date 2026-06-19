@@ -441,6 +441,7 @@ Claim the current pair and branch for an agent session:
 zaphod claim --agent codex --pair api
 zaphod claim --agent codex --pair api --json
 zaphod claim --agent codex --pair api --note "editing API routes" --json
+zaphod claim --agent codex --pair api --clear-note --json
 zaphod claim --agent codex --pair api --side left --json
 zaphod claim --agent codex --pair api --stale-after 2h --json
 ```
@@ -455,7 +456,8 @@ Agent names may contain only letters, numbers, `.`, `_`, and `-`.
 
 Use `--note` to attach short local context to the claim. Notes are optional,
 must be non-blank, cannot contain control characters, and are limited to 240
-characters.
+characters. Use `--clear-note` to remove an existing note while keeping the
+claim.
 
 Use `--branch` or `--side` when the claim should only be written from a specific
 branch or pair side. This lets an agent combine "am I in the right place?" and
@@ -473,6 +475,7 @@ Refresh an existing agent session claim for the current pair and branch:
 zaphod heartbeat --agent codex --pair api
 zaphod heartbeat --agent codex --pair api --json
 zaphod heartbeat --agent codex --pair api --note "adding tests" --json
+zaphod heartbeat --agent codex --pair api --clear-note --json
 zaphod heartbeat --agent codex --pair api --side left --json
 zaphod heartbeat --agent codex --pair api --stale-after 2h --json
 ```
@@ -487,7 +490,8 @@ Unlike `claim`, `heartbeat` can run while the worktree is dirty. This lets an
 agent refresh its own claim while it is actively editing files.
 
 Use `--note` to replace the existing claim note while refreshing the timestamp.
-When no note is provided, `heartbeat` preserves the existing note.
+Use `--clear-note` to remove the note while keeping the claim active. When no
+note option is provided, `heartbeat` preserves the existing note.
 
 Use `--branch` or `--side` to refuse the refresh unless the current branch is
 still the expected branch or pair side.
