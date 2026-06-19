@@ -7,6 +7,11 @@ and this project uses semantic versioning for published releases.
 
 ## Unreleased
 
+### Added
+
+- Agent handoff JSON now includes `target_claim` readiness when `--agent` is
+  provided, making target-branch claim conflicts visible before switching.
+
 ## 0.1.36 - 2026-06-19
 
 ### Added

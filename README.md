@@ -150,7 +150,9 @@ current branch, selected pair status, active claims, and claim readiness in one
 read-only report. With `--stale-after`, the handoff can also mark old claim
 conflicts as stale without removing them. With `--branch` or `--side`, the
 handoff can also prove the snapshot was captured from the expected branch or
-pair side before another agent trusts it.
+pair side before another agent trusts it. When `--agent` is present, handoff
+JSON also includes `target_claim`, so the receiving agent can see whether the
+paired target branch is already claimed before it attempts a switch.
 
 ## Safety Model
 
@@ -592,8 +594,9 @@ zaphod handoff --name api --agent codex --stale-after 2h --json
 
 The handoff report includes repository root, current branch, worktree state,
 Git operation state, selected pair status, active claims, and optional claim
-readiness for the requested agent. It does not create claims, remove claims, or
-switch branches.
+readiness for the requested agent. When `--agent` is present, JSON output also
+includes `target_claim` readiness for the paired branch that `zaphod switch`
+would move to. It does not create claims, remove claims, or switch branches.
 
 Use `--stale-after` with `--agent` when the receiving agent needs to know
 whether a claim conflict looks abandoned. The value uses the same duration

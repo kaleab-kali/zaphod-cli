@@ -1,6 +1,6 @@
 use crate::cli::{Cli, CliCommand, PairSide};
 use crate::core::{
-    AgentClaim, BranchPair, BranchPairs, ClaimError, GitState, PairError, PairStatus,
+    AgentClaim, AgentClaims, BranchPair, BranchPairs, ClaimError, GitState, PairError, PairStatus,
     RefusalReason, StatusError, WorktreeStatus, validate_agent_name, validate_claim_note,
     validate_pair_name,
 };
@@ -620,8 +620,28 @@ fn build_claim_report_for_scope(
     stale_after_seconds: Option<u64>,
 ) -> Result<PreflightClaimReport, AppError> {
     let store = ClaimStore::for_repository(repository);
-    let metadata_lock = build_metadata_lock_report(&store.lock_path());
     let claims = store.load()?;
+    build_claim_report_from_claims(
+        &store,
+        &claims,
+        pair,
+        branch,
+        agent,
+        claim_required,
+        stale_after_seconds,
+    )
+}
+
+fn build_claim_report_from_claims(
+    store: &ClaimStore,
+    claims: &AgentClaims,
+    pair: &str,
+    branch: &str,
+    agent: String,
+    claim_required: bool,
+    stale_after_seconds: Option<u64>,
+) -> Result<PreflightClaimReport, AppError> {
+    let metadata_lock = build_metadata_lock_report(&store.lock_path());
     let conflict = claims.conflict_for_scope(&agent, pair, branch).cloned();
     let owned_claim = claims.get_for_scope(&agent, pair, branch).cloned();
     let now_unix = if stale_after_seconds.is_some() && conflict.is_some() {
@@ -1495,6 +1515,7 @@ fn show_handoff(
         pair: None,
         claims: Vec::new(),
         claim: None,
+        target_claim: None,
         errors: Vec::new(),
     };
 
@@ -1572,6 +1593,7 @@ fn show_handoff(
     });
     let claim_pair = pair_report.pair.clone();
     let claim_branch = pair_report.current.clone();
+    let target_claim_branch = pair_report.other.clone();
     report.expectation = expectation;
     report.pair = Some(pair_report);
 
@@ -1580,35 +1602,23 @@ fn show_handoff(
     }
 
     if let Some(agent) = report.requested_agent.clone() {
-        let conflict = claims
-            .conflict_for_scope(&agent, &claim_pair, &claim_branch)
-            .cloned();
-        let owned_claim = claims
-            .get_for_scope(&agent, &claim_pair, &claim_branch)
-            .cloned();
-        let now_unix = if stale_after_seconds.is_some() && conflict.is_some() {
-            Some(current_unix_timestamp()?)
-        } else {
-            None
-        };
-        let conflict_stale = conflict.as_ref().and_then(|conflict| {
-            stale_after_seconds.map(|stale_after_seconds| {
-                claim_is_stale(
-                    conflict,
-                    now_unix.expect("stale claim conflict reporting has a timestamp"),
-                    stale_after_seconds,
-                )
-            })
-        });
-        let metadata_lock = build_metadata_lock_report(&claim_store.lock_path());
+        let claim_report = build_claim_report_from_claims(
+            &claim_store,
+            &claims,
+            &claim_pair,
+            &claim_branch,
+            agent.clone(),
+            require_claim,
+            stale_after_seconds,
+        )?;
         let required_claim_error = if require_claim {
-            if let Some(conflict) = &conflict {
+            if let Some(conflict) = &claim_report.conflict {
                 Some(AppError::ClaimConflict {
                     agent: conflict.agent.clone(),
                     pair: conflict.pair.clone(),
                     branch: conflict.branch.clone(),
                 })
-            } else if owned_claim.is_none() {
+            } else if !claim_report.claim_owned {
                 Some(AppError::ClaimRequired {
                     agent: agent.clone(),
                     pair: claim_pair.clone(),
@@ -1621,17 +1631,19 @@ fn show_handoff(
             None
         };
 
-        report.claim = Some(PreflightClaimReport {
-            requested_agent: agent,
-            claim_allowed: conflict.is_none() && metadata_lock.ok,
-            claim_required: require_claim,
-            claim_owned: owned_claim.is_some(),
-            owned_claim,
-            metadata_lock,
-            stale_after_seconds,
-            conflict_stale,
-            conflict,
-        });
+        report.claim = Some(claim_report);
+
+        if let Some(target_branch) = target_claim_branch {
+            report.target_claim = Some(build_claim_report_from_claims(
+                &claim_store,
+                &claims,
+                &claim_pair,
+                &target_branch,
+                agent,
+                false,
+                stale_after_seconds,
+            )?);
+        }
 
         if let Some(error) = required_claim_error {
             return finish_handoff_with_error(report, error, json);
@@ -2646,20 +2658,10 @@ fn print_handoff_report(report: &HandoffReport, json: bool) -> Result<(), AppErr
     }
 
     if let Some(claim) = &report.claim {
-        if claim.claim_required && claim.claim_owned {
-            println!("Claim: owned by {}", claim.requested_agent);
-        } else if claim.claim_required && !claim.claim_owned && claim.conflict.is_none() {
-            println!("Claim: missing for {}", claim.requested_agent);
-        } else if claim.claim_allowed {
-            println!("Claim: allowed for {}", claim.requested_agent);
-        } else if let Some(conflict) = &claim.conflict {
-            let stale = match (claim.conflict_stale, claim.stale_after_seconds) {
-                (Some(true), Some(seconds)) => format!(", stale after {seconds}s"),
-                (Some(false), Some(seconds)) => format!(", not stale after {seconds}s"),
-                _ => String::new(),
-            };
-            println!("Claim: refused (claimed by {}{})", conflict.agent, stale);
-        }
+        print_claim_readiness("Claim", claim);
+    }
+    if let Some(target_claim) = &report.target_claim {
+        print_claim_readiness("Target claim", target_claim);
     }
 
     if report.claims.is_empty() {
@@ -2938,6 +2940,7 @@ struct HandoffReport {
     pair: Option<PairStatusReport>,
     claims: Vec<AgentClaim>,
     claim: Option<PreflightClaimReport>,
+    target_claim: Option<PreflightClaimReport>,
     errors: Vec<HandoffErrorReport>,
 }
 
