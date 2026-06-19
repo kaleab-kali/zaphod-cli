@@ -103,6 +103,7 @@ pub fn run(cli: Cli) -> Result<(), AppError> {
             pair,
             branch,
             current,
+            target,
             side,
             stale_after,
         } => list_claims(ListClaimsOptions {
@@ -112,6 +113,7 @@ pub fn run(cli: Cli) -> Result<(), AppError> {
             pair,
             branch,
             current,
+            target,
             side,
             stale_after,
         }),
@@ -1164,6 +1166,7 @@ struct ListClaimsOptions {
     pair: Option<String>,
     branch: Option<String>,
     current: bool,
+    target: bool,
     side: Option<PairSide>,
     stale_after: Option<String>,
 }
@@ -1176,6 +1179,7 @@ fn list_claims(options: ListClaimsOptions) -> Result<(), AppError> {
         mut pair,
         branch,
         current,
+        target,
         side,
         stale_after,
     } = options;
@@ -1202,6 +1206,10 @@ fn list_claims(options: ListClaimsOptions) -> Result<(), AppError> {
     let repository = GitRepository::discover(".")?;
     let branch = if current {
         Some(repository.current_branch()?)
+    } else if target {
+        let context = load_status_context(pair.as_deref().unwrap_or("default"))?;
+        pair = Some(context.status.pair);
+        Some(context.status.other)
     } else if let Some(side) = side {
         Some(resolve_pair_side_branch(&repository, &mut pair, side)?)
     } else {
@@ -1240,6 +1248,7 @@ fn list_claims(options: ListClaimsOptions) -> Result<(), AppError> {
             pair,
             branch,
             current,
+            target,
             side: side.map(pair_side_name),
             stale_after_seconds,
         },
@@ -1375,6 +1384,7 @@ fn prune_claims(options: PruneClaimsOptions) -> Result<(), AppError> {
             pair,
             branch,
             current,
+            target: false,
             side: side.map(pair_side_name),
             stale_after_seconds,
         },
@@ -2486,16 +2496,18 @@ fn print_claims_report(report: &ClaimsReport) {
         || report.filters.pair.is_some()
         || report.filters.branch.is_some()
         || report.filters.current
+        || report.filters.target
         || report.filters.side.is_some()
         || report.filters.stale_after_seconds.is_some()
     {
         println!(
-            "Filters: agent={}, conflicts_for={}, pair={}, branch={}, current={}, side={}, stale_after={}",
+            "Filters: agent={}, conflicts_for={}, pair={}, branch={}, current={}, target={}, side={}, stale_after={}",
             report.filters.agent.as_deref().unwrap_or("*"),
             report.filters.conflicts_for.as_deref().unwrap_or("*"),
             report.filters.pair.as_deref().unwrap_or("*"),
             report.filters.branch.as_deref().unwrap_or("*"),
             report.filters.current,
+            report.filters.target,
             report.filters.side.unwrap_or("*"),
             report
                 .filters
@@ -2899,6 +2911,7 @@ struct ClaimsFilterReport {
     pair: Option<String>,
     branch: Option<String>,
     current: bool,
+    target: bool,
     side: Option<&'static str>,
     stale_after_seconds: Option<u64>,
 }

@@ -7,6 +7,11 @@ and this project uses semantic versioning for published releases.
 
 ## Unreleased
 
+### Added
+
+- `claims --target` for listing claims on the paired target branch without
+  switching branches.
+
 ## 0.1.34 - 2026-06-19
 
 ### Added
