@@ -244,8 +244,12 @@ pub enum CliCommand {
         #[arg(long, conflicts_with = "branch")]
         current: bool,
 
+        /// Filter claims to the paired target branch for the current branch.
+        #[arg(long, conflicts_with_all = ["branch", "current", "side"])]
+        target: bool,
+
         /// Filter claims to the left or right side of a pair.
-        #[arg(long, conflicts_with_all = ["branch", "current"])]
+        #[arg(long, conflicts_with_all = ["branch", "current", "target"])]
         side: Option<PairSide>,
 
         /// Filter claims older than this duration, for example 30m, 2h, or 1d.
@@ -1046,6 +1050,7 @@ mod tests {
                 pair: Some("api".to_owned()),
                 branch: Some("feature/api".to_owned()),
                 current: false,
+                target: false,
                 side: None,
                 stale_after: Some("2h".to_owned()),
             }
@@ -1065,6 +1070,27 @@ mod tests {
                 pair: None,
                 branch: None,
                 current: true,
+                target: false,
+                side: None,
+                stale_after: None,
+            }
+        );
+    }
+
+    #[test]
+    fn parses_claims_target_filter() {
+        let cli = Cli::parse_from(["zaphod", "claims", "--json", "--target"]);
+
+        assert_eq!(
+            cli.command,
+            CliCommand::Claims {
+                json: true,
+                agent: None,
+                conflicts_for: None,
+                pair: None,
+                branch: None,
+                current: false,
+                target: true,
                 side: None,
                 stale_after: None,
             }
@@ -1086,6 +1112,7 @@ mod tests {
                 pair: Some("api".to_owned()),
                 branch: None,
                 current: false,
+                target: false,
                 side: Some(PairSide::Left),
                 stale_after: None,
             }
@@ -1105,6 +1132,7 @@ mod tests {
                 pair: None,
                 branch: None,
                 current: false,
+                target: false,
                 side: None,
                 stale_after: None,
             }
@@ -1116,6 +1144,31 @@ mod tests {
         let error =
             Cli::try_parse_from(["zaphod", "claims", "--current", "--branch", "feature/api"])
                 .expect_err("reject current and branch filters together");
+
+        assert_eq!(error.kind(), clap::error::ErrorKind::ArgumentConflict);
+    }
+
+    #[test]
+    fn claims_target_conflicts_with_branch_filter() {
+        let error =
+            Cli::try_parse_from(["zaphod", "claims", "--target", "--branch", "feature/api"])
+                .expect_err("reject target and branch filters together");
+
+        assert_eq!(error.kind(), clap::error::ErrorKind::ArgumentConflict);
+    }
+
+    #[test]
+    fn claims_target_conflicts_with_current_filter() {
+        let error = Cli::try_parse_from(["zaphod", "claims", "--target", "--current"])
+            .expect_err("reject target and current filters together");
+
+        assert_eq!(error.kind(), clap::error::ErrorKind::ArgumentConflict);
+    }
+
+    #[test]
+    fn claims_target_conflicts_with_side_filter() {
+        let error = Cli::try_parse_from(["zaphod", "claims", "--target", "--side", "right"])
+            .expect_err("reject target and side filters together");
 
         assert_eq!(error.kind(), clap::error::ErrorKind::ArgumentConflict);
     }
