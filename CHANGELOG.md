@@ -7,6 +7,11 @@ and this project uses semantic versioning for published releases.
 
 ## Unreleased
 
+### Added
+
+- `claim --clear-note` and `heartbeat --clear-note` for removing claim notes
+  without releasing the underlying agent claim.
+
 ## 0.1.33 - 2026-06-06
 
 ### Added

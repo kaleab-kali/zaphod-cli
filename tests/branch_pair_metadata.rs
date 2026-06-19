@@ -629,6 +629,41 @@ fn claim_json_records_note_and_claims_reports_it() {
 }
 
 #[test]
+fn claim_json_can_clear_existing_claim_note() {
+    let dir = TestDir::new("zaphod-cli-metadata");
+    init_repo_with_pair_branches(dir.path());
+    let pair = zaphod(dir.path(), ["pair", "feature/api", "feature/ui"]);
+    assert_success(&pair);
+    let claim = zaphod(
+        dir.path(),
+        [
+            "claim",
+            "--agent",
+            "codex",
+            "--note",
+            "implementing API handler",
+        ],
+    );
+    assert_success(&claim);
+
+    let output = zaphod(
+        dir.path(),
+        ["claim", "--json", "--agent", "codex", "--clear-note"],
+    );
+
+    assert_success(&output);
+    let report: serde_json::Value = serde_json::from_slice(&output.stdout).expect("claim json");
+    assert_eq!(report["ok"], true);
+    assert_eq!(report["status"], "claimed");
+    assert!(report["claim"]["note"].is_null());
+
+    let claims = zaphod(dir.path(), ["claims", "--json"]);
+    assert_success(&claims);
+    let report: serde_json::Value = serde_json::from_slice(&claims.stdout).expect("claims json");
+    assert!(report["claims"][0]["note"].is_null());
+}
+
+#[test]
 fn claim_json_records_expected_branch_and_side() {
     let dir = TestDir::new("zaphod-cli-metadata");
     init_repo_with_pair_branches(dir.path());
@@ -775,6 +810,41 @@ fn heartbeat_json_can_replace_claim_note() {
     assert_success(&claims);
     let report: serde_json::Value = serde_json::from_slice(&claims.stdout).expect("claims json");
     assert_eq!(report["claims"][0]["note"], "reviewing tests");
+}
+
+#[test]
+fn heartbeat_json_can_clear_claim_note() {
+    let dir = TestDir::new("zaphod-cli-metadata");
+    init_repo_with_pair_branches(dir.path());
+    let pair = zaphod(dir.path(), ["pair", "feature/api", "feature/ui"]);
+    assert_success(&pair);
+    let claim = zaphod(
+        dir.path(),
+        [
+            "claim",
+            "--agent",
+            "codex",
+            "--note",
+            "implementing API handler",
+        ],
+    );
+    assert_success(&claim);
+
+    let output = zaphod(
+        dir.path(),
+        ["heartbeat", "--json", "--agent", "codex", "--clear-note"],
+    );
+
+    assert_success(&output);
+    let report: serde_json::Value = serde_json::from_slice(&output.stdout).expect("heartbeat json");
+    assert_eq!(report["ok"], true);
+    assert_eq!(report["status"], "refreshed");
+    assert!(report["claim"]["note"].is_null());
+
+    let claims = zaphod(dir.path(), ["claims", "--json"]);
+    assert_success(&claims);
+    let report: serde_json::Value = serde_json::from_slice(&claims.stdout).expect("claims json");
+    assert!(report["claims"][0]["note"].is_null());
 }
 
 #[test]

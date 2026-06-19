@@ -65,8 +65,18 @@ pub fn run(cli: Cli) -> Result<(), AppError> {
             branch,
             side,
             note,
+            clear_note,
             stale_after,
-        } => claim_current_scope(json, agent, pair, branch, side, note, stale_after),
+        } => claim_current_scope(ClaimScopeOptions {
+            json,
+            agent,
+            pair_name: pair,
+            expected_branch: branch,
+            expected_side: side,
+            note,
+            clear_note,
+            stale_after,
+        }),
         CliCommand::Heartbeat {
             json,
             agent,
@@ -74,8 +84,18 @@ pub fn run(cli: Cli) -> Result<(), AppError> {
             branch,
             side,
             note,
+            clear_note,
             stale_after,
-        } => heartbeat_claim(json, agent, pair, branch, side, note, stale_after),
+        } => heartbeat_claim(ClaimScopeOptions {
+            json,
+            agent,
+            pair_name: pair,
+            expected_branch: branch,
+            expected_side: side,
+            note,
+            clear_note,
+            stale_after,
+        }),
         CliCommand::Claims {
             json,
             agent,
@@ -842,15 +862,28 @@ fn assert_repository_state(
     }
 }
 
-fn claim_current_scope(
+struct ClaimScopeOptions {
     json: bool,
     agent: String,
     pair_name: String,
     expected_branch: Option<String>,
     expected_side: Option<PairSide>,
     note: Option<String>,
+    clear_note: bool,
     stale_after: Option<String>,
-) -> Result<(), AppError> {
+}
+
+fn claim_current_scope(options: ClaimScopeOptions) -> Result<(), AppError> {
+    let ClaimScopeOptions {
+        json,
+        agent,
+        pair_name,
+        expected_branch,
+        expected_side,
+        note,
+        clear_note,
+        stale_after,
+    } = options;
     validate_agent_name(&agent)?;
     if let Some(note) = &note {
         validate_claim_note(note)?;
@@ -955,12 +988,17 @@ fn claim_current_scope(
     let existing_note = claims
         .get_for_scope(&agent, &context.status.pair, &context.status.current)
         .and_then(|claim| claim.note.clone());
+    let next_note = if clear_note {
+        None
+    } else {
+        note.or(existing_note)
+    };
     let claim = AgentClaim::new_with_note(
         agent,
         context.status.pair,
         context.status.current,
         current_unix_timestamp()?,
-        note.or(existing_note),
+        next_note,
     )?;
     claims.upsert(claim.clone());
     store.save(&claims)?;
@@ -985,15 +1023,17 @@ fn claim_current_scope(
     Ok(())
 }
 
-fn heartbeat_claim(
-    json: bool,
-    agent: String,
-    pair_name: String,
-    expected_branch: Option<String>,
-    expected_side: Option<PairSide>,
-    note: Option<String>,
-    stale_after: Option<String>,
-) -> Result<(), AppError> {
+fn heartbeat_claim(options: ClaimScopeOptions) -> Result<(), AppError> {
+    let ClaimScopeOptions {
+        json,
+        agent,
+        pair_name,
+        expected_branch,
+        expected_side,
+        note,
+        clear_note,
+        stale_after,
+    } = options;
     validate_agent_name(&agent)?;
     if let Some(note) = &note {
         validate_claim_note(note)?;
@@ -1088,7 +1128,11 @@ fn heartbeat_claim(
         context.status.pair,
         context.status.current,
         current_unix_timestamp()?,
-        note.or(previous_claim.note),
+        if clear_note {
+            None
+        } else {
+            note.or(previous_claim.note)
+        },
     )?;
     claims.upsert(claim.clone());
     store.save(&claims)?;

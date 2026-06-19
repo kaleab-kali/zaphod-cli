@@ -169,8 +169,12 @@ pub enum CliCommand {
         side: Option<PairSide>,
 
         /// Short local note describing the work claimed by this agent.
-        #[arg(long)]
+        #[arg(long, conflicts_with = "clear_note")]
         note: Option<String>,
+
+        /// Clear the local note from the claim.
+        #[arg(long)]
+        clear_note: bool,
 
         /// Report whether a conflicting claim is older than this duration,
         /// for example 30m, 2h, or 1d.
@@ -201,8 +205,12 @@ pub enum CliCommand {
         side: Option<PairSide>,
 
         /// Replace the local note on the refreshed claim.
-        #[arg(long)]
+        #[arg(long, conflicts_with = "clear_note")]
         note: Option<String>,
+
+        /// Clear the local note from the refreshed claim.
+        #[arg(long)]
+        clear_note: bool,
 
         /// Report whether a conflicting claim is older than this duration,
         /// for example 30m, 2h, or 1d.
@@ -757,6 +765,7 @@ mod tests {
                 branch: None,
                 side: None,
                 note: None,
+                clear_note: false,
                 stale_after: None,
             }
         );
@@ -784,6 +793,7 @@ mod tests {
                 branch: Some("feature/api".to_owned()),
                 side: Some(PairSide::Left),
                 note: None,
+                clear_note: false,
                 stale_after: None,
             }
         );
@@ -802,6 +812,7 @@ mod tests {
                 branch: None,
                 side: None,
                 note: None,
+                clear_note: false,
                 stale_after: Some("2h".to_owned()),
             }
         );
@@ -827,9 +838,45 @@ mod tests {
                 branch: None,
                 side: None,
                 note: Some("implementing API handler".to_owned()),
+                clear_note: false,
                 stale_after: None,
             }
         );
+    }
+
+    #[test]
+    fn parses_claim_clear_note() {
+        let cli = Cli::parse_from(["zaphod", "claim", "--agent", "codex", "--clear-note"]);
+
+        assert_eq!(
+            cli.command,
+            CliCommand::Claim {
+                json: false,
+                agent: "codex".to_owned(),
+                pair: "default".to_owned(),
+                branch: None,
+                side: None,
+                note: None,
+                clear_note: true,
+                stale_after: None,
+            }
+        );
+    }
+
+    #[test]
+    fn claim_note_conflicts_with_clear_note() {
+        let error = Cli::try_parse_from([
+            "zaphod",
+            "claim",
+            "--agent",
+            "codex",
+            "--note",
+            "still editing",
+            "--clear-note",
+        ])
+        .expect_err("reject conflicting note options");
+
+        assert_eq!(error.kind(), clap::error::ErrorKind::ArgumentConflict);
     }
 
     #[test]
@@ -853,6 +900,7 @@ mod tests {
                 branch: None,
                 side: None,
                 note: None,
+                clear_note: false,
                 stale_after: None,
             }
         );
@@ -880,6 +928,7 @@ mod tests {
                 branch: Some("feature/api".to_owned()),
                 side: Some(PairSide::Left),
                 note: None,
+                clear_note: false,
                 stale_after: None,
             }
         );
@@ -905,6 +954,7 @@ mod tests {
                 branch: None,
                 side: None,
                 note: None,
+                clear_note: false,
                 stale_after: Some("2h".to_owned()),
             }
         );
@@ -930,9 +980,45 @@ mod tests {
                 branch: None,
                 side: None,
                 note: Some("still editing".to_owned()),
+                clear_note: false,
                 stale_after: None,
             }
         );
+    }
+
+    #[test]
+    fn parses_heartbeat_clear_note() {
+        let cli = Cli::parse_from(["zaphod", "heartbeat", "--agent", "codex", "--clear-note"]);
+
+        assert_eq!(
+            cli.command,
+            CliCommand::Heartbeat {
+                json: false,
+                agent: "codex".to_owned(),
+                pair: "default".to_owned(),
+                branch: None,
+                side: None,
+                note: None,
+                clear_note: true,
+                stale_after: None,
+            }
+        );
+    }
+
+    #[test]
+    fn heartbeat_note_conflicts_with_clear_note() {
+        let error = Cli::try_parse_from([
+            "zaphod",
+            "heartbeat",
+            "--agent",
+            "codex",
+            "--note",
+            "still editing",
+            "--clear-note",
+        ])
+        .expect_err("reject conflicting note options");
+
+        assert_eq!(error.kind(), clap::error::ErrorKind::ArgumentConflict);
     }
 
     #[test]
