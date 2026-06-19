@@ -1547,6 +1547,58 @@ fn handoff_json_reports_pair_claims_and_agent_readiness() {
 }
 
 #[test]
+fn handoff_json_reports_target_claim_readiness() {
+    let dir = TestDir::new("zaphod-cli-metadata");
+    init_repo_with_pair_branches(dir.path());
+    let pair = zaphod(dir.path(), ["pair", "feature/api", "feature/ui"]);
+    assert_success(&pair);
+    let metadata_dir = dir.git_dir().join("zaphod");
+    fs::create_dir_all(&metadata_dir).expect("create zaphod metadata directory");
+    fs::write(
+        metadata_dir.join("claims.toml"),
+        r#"[[claims]]
+agent = "ui-agent"
+pair = "default"
+branch = "feature/ui"
+created_at_unix = 1
+"#,
+    )
+    .expect("write target claim metadata");
+
+    let output = zaphod(
+        dir.path(),
+        [
+            "handoff",
+            "--json",
+            "--agent",
+            "codex",
+            "--stale-after",
+            "1d",
+        ],
+    );
+
+    assert_success(&output);
+    assert_eq!(current_branch(dir.path()), "feature/api");
+    let report: serde_json::Value = serde_json::from_slice(&output.stdout).expect("handoff json");
+    assert_eq!(report["ok"], true);
+    assert_eq!(report["pair"]["current"], "feature/api");
+    assert_eq!(report["pair"]["other"], "feature/ui");
+    assert_eq!(report["claim"]["requested_agent"], "codex");
+    assert_eq!(report["claim"]["claim_allowed"], true);
+    assert_eq!(report["claim"]["claim_owned"], false);
+    assert!(report["claim"]["conflict"].is_null());
+    assert_eq!(report["target_claim"]["requested_agent"], "codex");
+    assert_eq!(report["target_claim"]["claim_allowed"], false);
+    assert_eq!(report["target_claim"]["claim_required"], false);
+    assert_eq!(report["target_claim"]["claim_owned"], false);
+    assert_eq!(report["target_claim"]["stale_after_seconds"], 86_400);
+    assert_eq!(report["target_claim"]["conflict_stale"], true);
+    assert_eq!(report["target_claim"]["conflict"]["agent"], "ui-agent");
+    assert_eq!(report["target_claim"]["conflict"]["branch"], "feature/ui");
+    assert_eq!(report["errors"], json!([]));
+}
+
+#[test]
 fn handoff_json_requires_existing_claim_for_agent() {
     let dir = TestDir::new("zaphod-cli-metadata");
     init_repo_with_pair_branches(dir.path());
