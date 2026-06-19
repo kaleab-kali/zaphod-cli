@@ -7,6 +7,8 @@ and this project uses semantic versioning for published releases.
 
 ## Unreleased
 
+## 0.1.34 - 2026-06-19
+
 ### Added
 
 - `claim --clear-note` and `heartbeat --clear-note` for removing claim notes
