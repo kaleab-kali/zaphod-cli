@@ -123,6 +123,7 @@ pub fn run(cli: Cli) -> Result<(), AppError> {
             pair,
             branch,
             current,
+            target,
             side,
             stale_after,
             orphaned,
@@ -133,6 +134,7 @@ pub fn run(cli: Cli) -> Result<(), AppError> {
             pair,
             branch,
             current,
+            target,
             side,
             stale_after,
             orphaned,
@@ -1270,6 +1272,7 @@ struct PruneClaimsOptions {
     pair: Option<String>,
     branch: Option<String>,
     current: bool,
+    target: bool,
     side: Option<PairSide>,
     stale_after: Option<String>,
     orphaned: bool,
@@ -1283,6 +1286,7 @@ fn prune_claims(options: PruneClaimsOptions) -> Result<(), AppError> {
         pair,
         branch,
         current,
+        target,
         side,
         stale_after,
         orphaned,
@@ -1309,6 +1313,10 @@ fn prune_claims(options: PruneClaimsOptions) -> Result<(), AppError> {
     let mut pair = pair;
     let branch = if current {
         Some(repository.current_branch()?)
+    } else if target {
+        let context = load_status_context(pair.as_deref().unwrap_or("default"))?;
+        pair = Some(context.status.pair);
+        Some(context.status.other)
     } else if let Some(side) = side {
         Some(resolve_pair_side_branch(&repository, &mut pair, side)?)
     } else {
@@ -1384,7 +1392,7 @@ fn prune_claims(options: PruneClaimsOptions) -> Result<(), AppError> {
             pair,
             branch,
             current,
-            target: false,
+            target,
             side: side.map(pair_side_name),
             stale_after_seconds,
         },

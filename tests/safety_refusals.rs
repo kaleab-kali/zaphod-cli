@@ -1207,6 +1207,27 @@ fn prune_claims_side_reports_missing_pair() {
 }
 
 #[test]
+fn prune_claims_target_reports_current_branch_outside_pair() {
+    let dir = TestDir::new("zaphod-cli-safety");
+    init_repo_with_pair_branches(dir.path());
+    let pair = zaphod(dir.path(), ["pair", "feature/api", "feature/ui"]);
+    assert_success(&pair);
+    git(dir.path(), ["switch", "main"]);
+
+    let output = zaphod(
+        dir.path(),
+        ["prune-claims", "--target", "--stale-after", "1d"],
+    );
+
+    assert!(!output.status.success());
+    assert_eq!(output.status.code(), Some(2));
+    assert_stderr_contains(
+        &output,
+        "current branch 'main' is not part of pair 'default'",
+    );
+}
+
+#[test]
 fn unclaim_reports_missing_claim() {
     let dir = TestDir::new("zaphod-cli-safety");
     init_repo_with_pair_branches(dir.path());

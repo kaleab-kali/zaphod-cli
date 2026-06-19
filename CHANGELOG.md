@@ -7,6 +7,11 @@ and this project uses semantic versioning for published releases.
 
 ## Unreleased
 
+### Added
+
+- `prune-claims --target` for dry-run-by-default stale claim cleanup scoped to
+  the paired target branch without switching branches.
+
 ## 0.1.35 - 2026-06-19
 
 ### Added

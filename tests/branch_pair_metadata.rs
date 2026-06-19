@@ -1337,6 +1337,94 @@ created_at_unix = 4102444800
 }
 
 #[test]
+fn prune_claims_target_filters_cleanup_to_target_branch_without_switching() {
+    let dir = TestDir::new("zaphod-cli-metadata");
+    init_repo_with_pair_branches(dir.path());
+    let pair = zaphod(dir.path(), ["pair", "feature/api", "feature/ui"]);
+    assert_success(&pair);
+    let metadata_dir = dir.git_dir().join("zaphod");
+    fs::create_dir_all(&metadata_dir).expect("create zaphod metadata directory");
+    let claims_path = metadata_dir.join("claims.toml");
+    fs::write(
+        &claims_path,
+        r#"[[claims]]
+agent = "old-api-agent"
+pair = "default"
+branch = "feature/api"
+created_at_unix = 1
+
+[[claims]]
+agent = "old-ui-agent"
+pair = "default"
+branch = "feature/ui"
+created_at_unix = 1
+
+[[claims]]
+agent = "fresh-ui-agent"
+pair = "default"
+branch = "feature/ui"
+created_at_unix = 4102444800
+"#,
+    )
+    .expect("write claims metadata");
+    assert_eq!(current_branch(dir.path()), "feature/api");
+
+    let dry_run = zaphod(
+        dir.path(),
+        ["prune-claims", "--json", "--target", "--stale-after", "1d"],
+    );
+
+    assert_success(&dry_run);
+    assert_eq!(current_branch(dir.path()), "feature/api");
+    let report: serde_json::Value =
+        serde_json::from_slice(&dry_run.stdout).expect("prune target dry-run json");
+    assert_eq!(report["applied"], false);
+    assert_eq!(report["filters"]["pair"], "default");
+    assert_eq!(report["filters"]["branch"], "feature/ui");
+    assert_eq!(report["filters"]["current"], false);
+    assert_eq!(report["filters"]["target"], true);
+    assert!(report["filters"]["side"].is_null());
+    assert_eq!(report["filters"]["stale_after_seconds"], 86_400);
+    assert_eq!(report["pruned_claims"].as_array().expect("claims").len(), 1);
+    assert_eq!(report["pruned_claims"][0]["agent"], "old-ui-agent");
+    assert_eq!(report["remaining_claim_count"], 3);
+    let metadata = fs::read_to_string(&claims_path).expect("read claims metadata");
+    assert!(metadata.contains("old-api-agent"));
+    assert!(metadata.contains("old-ui-agent"));
+
+    let apply = zaphod(
+        dir.path(),
+        [
+            "prune-claims",
+            "--json",
+            "--target",
+            "--stale-after",
+            "1d",
+            "--apply",
+        ],
+    );
+
+    assert_success(&apply);
+    assert_eq!(current_branch(dir.path()), "feature/api");
+    let report: serde_json::Value =
+        serde_json::from_slice(&apply.stdout).expect("prune target apply json");
+    assert_eq!(report["applied"], true);
+    assert_eq!(report["filters"]["pair"], "default");
+    assert_eq!(report["filters"]["branch"], "feature/ui");
+    assert_eq!(report["filters"]["target"], true);
+    assert_eq!(report["pruned_claims"].as_array().expect("claims").len(), 1);
+    assert_eq!(report["pruned_claims"][0]["agent"], "old-ui-agent");
+    assert_eq!(report["remaining_claim_count"], 2);
+
+    let claims = zaphod(dir.path(), ["claims", "--json"]);
+    assert_success(&claims);
+    let report: serde_json::Value = serde_json::from_slice(&claims.stdout).expect("claims json");
+    assert_eq!(report["claims"].as_array().expect("claims").len(), 2);
+    assert_eq!(report["claims"][0]["agent"], "old-api-agent");
+    assert_eq!(report["claims"][1]["agent"], "fresh-ui-agent");
+}
+
+#[test]
 fn prune_claims_dry_runs_and_applies_orphaned_cleanup() {
     let dir = TestDir::new("zaphod-cli-metadata");
     init_repo_with_pair_branches(dir.path());

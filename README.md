@@ -113,6 +113,7 @@ zaphod claims --pair search --side left --json
 zaphod claims --pair search --stale-after 2h --json
 zaphod prune-claims --pair search --stale-after 2h --json
 zaphod prune-claims --current --stale-after 2h --json
+zaphod prune-claims --target --stale-after 2h --json
 zaphod prune-claims --pair search --side left --stale-after 2h --json
 zaphod prune-claims --pair search --stale-after 2h --apply
 zaphod prune-claims --orphaned --json
@@ -536,6 +537,7 @@ Preview or remove stale or orphaned agent session claims:
 zaphod prune-claims --stale-after 2h
 zaphod prune-claims --pair api --stale-after 2h --json
 zaphod prune-claims --current --stale-after 2h --json
+zaphod prune-claims --target --stale-after 2h --json
 zaphod prune-claims --pair api --side left --stale-after 2h --json
 zaphod prune-claims --pair api --stale-after 2h --apply
 zaphod prune-claims --orphaned --json
@@ -545,10 +547,12 @@ zaphod prune-claims --orphaned --apply
 `prune-claims` defaults to dry-run mode and does not change metadata unless
 `--apply` is present. Use `--agent`, `--pair`, and `--branch` to narrow the
 cleanup scope. Use `--current` to narrow cleanup to the current Git branch
-without scripting a separate branch lookup. Use `--side left` or `--side right`
-to clean claims for a pair side without switching branches. Use `--orphaned` to
-match claims for missing pairs, branches outside their configured pair, or local
-branches that no longer exist. The command only edits
+without scripting a separate branch lookup. Use `--target` to narrow cleanup to
+the paired branch that `zaphod switch` would move to without switching branches.
+Use `--side left` or `--side right` to clean claims for a pair side without
+switching branches. Use `--orphaned` to match claims for missing pairs, branches
+outside their configured pair, or local branches that no longer exist. The
+command only edits
 `.git/zaphod/claims.toml`; it never switches branches, deletes files, or
 changes Git history.
 
