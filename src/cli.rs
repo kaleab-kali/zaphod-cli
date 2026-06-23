@@ -146,7 +146,7 @@ pub enum CliCommand {
         require_claim: bool,
     },
 
-    /// Claim the current pair and branch for an agent session.
+    /// Claim the current or paired target branch for an agent session.
     Claim {
         /// Emit machine-readable JSON.
         #[arg(long)]
@@ -167,6 +167,10 @@ pub enum CliCommand {
         /// Pair side expected as the current branch before writing the claim.
         #[arg(long)]
         side: Option<PairSide>,
+
+        /// Claim the paired target branch without switching branches.
+        #[arg(long)]
+        target: bool,
 
         /// Short local note describing the work claimed by this agent.
         #[arg(long, conflicts_with = "clear_note")]
@@ -772,6 +776,7 @@ mod tests {
                 pair: "api".to_owned(),
                 branch: None,
                 side: None,
+                target: false,
                 note: None,
                 clear_note: false,
                 stale_after: None,
@@ -800,6 +805,7 @@ mod tests {
                 pair: "default".to_owned(),
                 branch: Some("feature/api".to_owned()),
                 side: Some(PairSide::Left),
+                target: false,
                 note: None,
                 clear_note: false,
                 stale_after: None,
@@ -819,6 +825,7 @@ mod tests {
                 pair: "default".to_owned(),
                 branch: None,
                 side: None,
+                target: false,
                 note: None,
                 clear_note: false,
                 stale_after: Some("2h".to_owned()),
@@ -845,6 +852,7 @@ mod tests {
                 pair: "default".to_owned(),
                 branch: None,
                 side: None,
+                target: false,
                 note: Some("implementing API handler".to_owned()),
                 clear_note: false,
                 stale_after: None,
@@ -864,8 +872,29 @@ mod tests {
                 pair: "default".to_owned(),
                 branch: None,
                 side: None,
+                target: false,
                 note: None,
                 clear_note: true,
+                stale_after: None,
+            }
+        );
+    }
+
+    #[test]
+    fn parses_claim_target_scope() {
+        let cli = Cli::parse_from(["zaphod", "claim", "--agent", "codex", "--target"]);
+
+        assert_eq!(
+            cli.command,
+            CliCommand::Claim {
+                json: false,
+                agent: "codex".to_owned(),
+                pair: "default".to_owned(),
+                branch: None,
+                side: None,
+                target: true,
+                note: None,
+                clear_note: false,
                 stale_after: None,
             }
         );
