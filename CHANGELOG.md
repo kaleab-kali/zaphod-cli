@@ -7,6 +7,11 @@ and this project uses semantic versioning for published releases.
 
 ## Unreleased
 
+### Added
+
+- Agent preflight JSON now includes `target_claim` readiness when `--agent` is
+  provided, matching handoff visibility before a paired-branch switch.
+
 ## 0.1.37 - 2026-06-19
 
 ### Added
