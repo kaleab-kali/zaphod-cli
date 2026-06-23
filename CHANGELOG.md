@@ -7,6 +7,11 @@ and this project uses semantic versioning for published releases.
 
 ## Unreleased
 
+### Added
+
+- `claim --target` can now claim the paired target branch without switching,
+  enabling guarded `switch --require-claim` workflows from the current branch.
+
 ## 0.1.38 - 2026-06-23
 
 ### Added

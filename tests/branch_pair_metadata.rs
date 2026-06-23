@@ -654,6 +654,57 @@ fn claim_json_records_current_pair_and_branch() {
 }
 
 #[test]
+fn claim_json_can_claim_target_branch_without_switching() {
+    let dir = TestDir::new("zaphod-cli-metadata");
+    init_repo_with_pair_branches(dir.path());
+    let pair = zaphod(dir.path(), ["pair", "feature/api", "feature/ui"]);
+    assert_success(&pair);
+
+    let output = zaphod(
+        dir.path(),
+        [
+            "claim",
+            "--json",
+            "--agent",
+            "codex",
+            "--target",
+            "--note",
+            "reserving UI side",
+        ],
+    );
+
+    assert_success(&output);
+    assert_eq!(current_branch(dir.path()), "feature/api");
+    let report: serde_json::Value = serde_json::from_slice(&output.stdout).expect("claim json");
+    assert_eq!(report["ok"], true);
+    assert_eq!(report["status"], "claimed");
+    assert_eq!(report["agent"], "codex");
+    assert_eq!(report["pair"], "default");
+    assert_eq!(report["branch"], "feature/ui");
+    assert_eq!(report["claim"]["agent"], "codex");
+    assert_eq!(report["claim"]["pair"], "default");
+    assert_eq!(report["claim"]["branch"], "feature/ui");
+    assert_eq!(report["claim"]["note"], "reserving UI side");
+    assert!(report["conflict"].is_null());
+    assert_eq!(report["refusal_reasons"], json!([]));
+
+    let claims = zaphod(dir.path(), ["claims", "--json", "--target"]);
+    assert_success(&claims);
+    let report: serde_json::Value = serde_json::from_slice(&claims.stdout).expect("claims json");
+    assert_eq!(report["filters"]["target"], true);
+    assert_eq!(report["filters"]["branch"], "feature/ui");
+    assert_eq!(report["claims"][0]["agent"], "codex");
+    assert_eq!(report["claims"][0]["branch"], "feature/ui");
+
+    let switched = zaphod(
+        dir.path(),
+        ["switch", "--json", "--agent", "codex", "--require-claim"],
+    );
+    assert_success(&switched);
+    assert_eq!(current_branch(dir.path()), "feature/ui");
+}
+
+#[test]
 fn claim_json_records_note_and_claims_reports_it() {
     let dir = TestDir::new("zaphod-cli-metadata");
     init_repo_with_pair_branches(dir.path());

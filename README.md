@@ -22,6 +22,8 @@ Zaphod is in early development. The current `0.1.x` CLI can:
 - Assert the expected branch, pair, pair side, or agent claim before scripted
   work starts or resumes.
 - Claim, heartbeat, and release a pair/branch for an agent session.
+- Claim the paired target branch without switching, so guarded agent switches
+  can require an existing target claim.
 - Emit a handoff snapshot for agent-to-agent continuation.
 - Refuse unsafe switches when the worktree is dirty or Git is mid-operation.
 - Emit JSON status, switch, and pair-mutation results for scripts.
@@ -100,6 +102,7 @@ claims add a lightweight coordination layer:
 
 ```sh
 zaphod claim --agent codex --pair search --note "backend search endpoint" --json
+zaphod claim --agent codex --pair search --target --note "reserve UI side" --json
 zaphod claim --agent codex --pair search --stale-after 2h --json
 # work on the branch
 zaphod preflight --agent codex --require-claim --json
@@ -450,6 +453,7 @@ zaphod claim --agent codex --pair api
 zaphod claim --agent codex --pair api --json
 zaphod claim --agent codex --pair api --note "editing API routes" --json
 zaphod claim --agent codex --pair api --clear-note --json
+zaphod claim --agent codex --pair api --target --json
 zaphod claim --agent codex --pair api --side left --json
 zaphod claim --agent codex --pair api --stale-after 2h --json
 ```
@@ -470,6 +474,10 @@ claim.
 Use `--branch` or `--side` when the claim should only be written from a specific
 branch or pair side. This lets an agent combine "am I in the right place?" and
 "claim this work" into one guarded command.
+
+Use `--target` to claim the paired branch that `zaphod switch` would move to
+without switching branches. This lets an agent reserve the other side of a
+paired task before running `zaphod switch --agent <name> --require-claim`.
 
 Use `--stale-after` to add `conflict_stale` to JSON conflict reports. This is a
 reporting aid only: `claim` still refuses the conflict and never takes over or
