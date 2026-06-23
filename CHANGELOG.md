@@ -7,6 +7,8 @@ and this project uses semantic versioning for published releases.
 
 ## Unreleased
 
+## 0.1.39 - 2026-06-23
+
 ### Added
 
 - `claim --target` can now claim the paired target branch without switching,
