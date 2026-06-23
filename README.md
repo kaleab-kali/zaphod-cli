@@ -386,7 +386,9 @@ error when the repository is not ready.
 
 Use `--agent` to check whether another agent has already claimed the current
 pair and branch. This does not create or remove a claim; it only reports whether
-claiming would be allowed.
+claiming would be allowed. JSON output also includes `target_claim` readiness
+for the paired branch that `zaphod switch` would move to, so an agent can see
+target-branch claim conflicts before it attempts a switch.
 
 Use `--require-claim` with `--agent` when an agent is resuming work and must
 prove it already owns the current pair and branch claim. This is read-only: it
@@ -412,6 +414,8 @@ process appears to hold the metadata lock.
 Use `--stale-after` with `--agent` to mark old claim conflicts in the preflight
 report. Preflight still refuses the conflict; stale reporting is only a signal
 for scripts or humans to decide whether an explicit `unclaim` is appropriate.
+The same stale marker is included on `target_claim` when the paired target
+branch is claimed by another agent.
 
 ### `zaphod assert`
 

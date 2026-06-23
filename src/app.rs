@@ -526,7 +526,7 @@ fn run_preflight(
             let mut claim_blocked = None;
             let mut claim_required = None;
             let claim_conflict = if let Some(agent) = agent {
-                let claim_report = build_preflight_claim_report(
+                let (claim_report, target_claim_report) = build_preflight_claim_reports(
                     &context,
                     agent,
                     require_claim,
@@ -552,6 +552,7 @@ fn run_preflight(
                     && claim_report.claim_allowed
                     && (!require_claim || claim_report.claim_owned);
                 report.claim = Some(claim_report);
+                report.target_claim = Some(target_claim_report);
                 conflict
             } else {
                 None
@@ -595,20 +596,34 @@ fn run_preflight(
     }
 }
 
-fn build_preflight_claim_report(
+fn build_preflight_claim_reports(
     context: &StatusContext,
     agent: String,
     claim_required: bool,
     stale_after_seconds: Option<u64>,
-) -> Result<PreflightClaimReport, AppError> {
-    build_claim_report_for_scope(
-        &context.repository,
+) -> Result<(PreflightClaimReport, PreflightClaimReport), AppError> {
+    let store = ClaimStore::for_repository(&context.repository);
+    let claims = store.load()?;
+    let claim_report = build_claim_report_from_claims(
+        &store,
+        &claims,
         &context.status.pair,
         &context.status.current,
-        agent,
+        agent.clone(),
         claim_required,
         stale_after_seconds,
-    )
+    )?;
+    let target_claim_report = build_claim_report_from_claims(
+        &store,
+        &claims,
+        &context.status.pair,
+        &context.status.other,
+        agent,
+        false,
+        stale_after_seconds,
+    )?;
+
+    Ok((claim_report, target_claim_report))
 }
 
 fn build_claim_report_for_scope(
@@ -2306,29 +2321,7 @@ fn print_preflight_report(report: &PreflightReport) {
     }
 
     if let Some(claim) = &report.claim {
-        if claim.claim_required && claim.claim_owned {
-            println!("Claim: owned by {}", claim.requested_agent);
-        } else if claim.claim_required && !claim.claim_owned && claim.conflict.is_none() {
-            println!("Claim: missing for {}", claim.requested_agent);
-        } else if claim.claim_allowed {
-            println!("Claim: allowed for {}", claim.requested_agent);
-        } else if let Some(conflict) = &claim.conflict {
-            let stale = match (claim.conflict_stale, claim.stale_after_seconds) {
-                (Some(true), Some(seconds)) => format!(", stale after {seconds}s"),
-                (Some(false), Some(seconds)) => format!(", not stale after {seconds}s"),
-                _ => String::new(),
-            };
-            println!("Claim: refused (claimed by {}{})", conflict.agent, stale);
-        } else if let Some(error) = &claim.metadata_lock.error {
-            println!("Claim: refused (metadata lock error: {error})");
-        } else if claim.metadata_lock.locked.unwrap_or(false) {
-            println!(
-                "Claim: refused (metadata lock present at {})",
-                claim.metadata_lock.path.as_deref().unwrap_or("unknown")
-            );
-        } else {
-            println!("Claim: refused");
-        }
+        print_claim_readiness("Claim", claim);
 
         if let Some(error) = &claim.metadata_lock.error {
             println!("Claim metadata lock: error ({error})");
@@ -2343,6 +2336,9 @@ fn print_preflight_report(report: &PreflightReport) {
                 claim.metadata_lock.path.as_deref().unwrap_or("unknown")
             );
         }
+    }
+    if let Some(target_claim) = &report.target_claim {
+        print_claim_readiness("Target claim", target_claim);
     }
 
     if let Some(error) = &report.error {
@@ -2782,6 +2778,7 @@ struct PreflightReport {
     refusal_reasons: Vec<RefusalReason>,
     expectation: Option<BranchExpectationReport>,
     claim: Option<PreflightClaimReport>,
+    target_claim: Option<PreflightClaimReport>,
     error: Option<PreflightErrorReport>,
 }
 
@@ -2799,6 +2796,7 @@ impl PreflightReport {
             refusal_reasons: context.status.refusal_reasons.clone(),
             expectation: None,
             claim: None,
+            target_claim: None,
             error: None,
         }
     }
@@ -2816,6 +2814,7 @@ impl PreflightReport {
             refusal_reasons: Vec::new(),
             expectation: None,
             claim: None,
+            target_claim: None,
             error: Some(PreflightErrorReport {
                 kind: error.kind(),
                 message: error.to_string(),
