@@ -7,6 +7,8 @@ and this project uses semantic versioning for published releases.
 
 ## Unreleased
 
+## 0.1.38 - 2026-06-23
+
 ### Added
 
 - Agent preflight JSON now includes `target_claim` readiness when `--agent` is
