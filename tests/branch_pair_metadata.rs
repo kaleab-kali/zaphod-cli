@@ -851,6 +851,69 @@ created_at_unix = 1
 }
 
 #[test]
+fn heartbeat_json_refreshes_target_claim_without_switching() {
+    let dir = TestDir::new("zaphod-cli-metadata");
+    init_repo_with_pair_branches(dir.path());
+    let pair = zaphod(dir.path(), ["pair", "feature/api", "feature/ui"]);
+    assert_success(&pair);
+    let metadata_dir = dir.git_dir().join("zaphod");
+    fs::create_dir_all(&metadata_dir).expect("create zaphod metadata directory");
+    fs::write(
+        metadata_dir.join("claims.toml"),
+        r#"[[claims]]
+agent = "codex"
+pair = "default"
+branch = "feature/ui"
+created_at_unix = 1
+note = "reserved target"
+"#,
+    )
+    .expect("write old target claim metadata");
+    fs::write(dir.path().join("dirty.txt"), "local work\n").expect("write dirty file");
+
+    let output = zaphod(
+        dir.path(),
+        [
+            "heartbeat",
+            "--json",
+            "--agent",
+            "codex",
+            "--target",
+            "--note",
+            "still reserving target",
+        ],
+    );
+
+    assert_success(&output);
+    assert_eq!(current_branch(dir.path()), "feature/api");
+    let report: serde_json::Value = serde_json::from_slice(&output.stdout).expect("heartbeat json");
+    assert_eq!(report["ok"], true);
+    assert_eq!(report["status"], "refreshed");
+    assert_eq!(report["agent"], "codex");
+    assert_eq!(report["pair"], "default");
+    assert_eq!(report["branch"], "feature/ui");
+    assert_eq!(report["claim"]["agent"], "codex");
+    assert_eq!(report["claim"]["pair"], "default");
+    assert_eq!(report["claim"]["branch"], "feature/ui");
+    assert_eq!(report["claim"]["note"], "still reserving target");
+    assert!(
+        report["claim"]["created_at_unix"]
+            .as_u64()
+            .expect("claim timestamp")
+            > 1
+    );
+
+    let claims = zaphod(dir.path(), ["claims", "--json", "--target"]);
+    assert_success(&claims);
+    let report: serde_json::Value = serde_json::from_slice(&claims.stdout).expect("claims json");
+    assert_eq!(report["filters"]["target"], true);
+    assert_eq!(report["filters"]["branch"], "feature/ui");
+    assert_eq!(report["claims"][0]["agent"], "codex");
+    assert_eq!(report["claims"][0]["branch"], "feature/ui");
+    assert_eq!(report["claims"][0]["note"], "still reserving target");
+}
+
+#[test]
 fn heartbeat_json_preserves_existing_claim_note() {
     let dir = TestDir::new("zaphod-cli-metadata");
     init_repo_with_pair_branches(dir.path());
