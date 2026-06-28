@@ -7,6 +7,8 @@ and this project uses semantic versioning for published releases.
 
 ## Unreleased
 
+## 0.1.40 - 2026-06-28
+
 ### Added
 
 - `heartbeat --target` can now refresh an existing paired target branch claim
