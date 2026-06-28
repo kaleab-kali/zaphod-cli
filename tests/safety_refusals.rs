@@ -836,6 +836,39 @@ fn heartbeat_json_reports_conflicting_agent() {
 }
 
 #[test]
+fn heartbeat_target_json_reports_conflicting_agent_without_switching() {
+    let dir = TestDir::new("zaphod-cli-safety");
+    init_repo_with_pair_branches(dir.path());
+    let pair = zaphod(dir.path(), ["pair", "feature/api", "feature/ui"]);
+    assert_success(&pair);
+    git(dir.path(), ["switch", "feature/ui"]);
+    let claim = zaphod(dir.path(), ["claim", "--agent", "other"]);
+    assert_success(&claim);
+    git(dir.path(), ["switch", "feature/api"]);
+
+    let output = zaphod(
+        dir.path(),
+        ["heartbeat", "--json", "--agent", "codex", "--target"],
+    );
+
+    assert!(!output.status.success());
+    assert_eq!(output.status.code(), Some(3));
+    let report: serde_json::Value = serde_json::from_slice(&output.stdout).expect("heartbeat json");
+    assert_eq!(report["ok"], false);
+    assert_eq!(report["status"], "conflict");
+    assert_eq!(report["agent"], "codex");
+    assert_eq!(report["pair"], "default");
+    assert_eq!(report["branch"], "feature/ui");
+    assert_eq!(report["conflict"]["agent"], "other");
+    assert_eq!(report["conflict"]["branch"], "feature/ui");
+    assert_stderr_contains(
+        &output,
+        "pair 'default' on branch 'feature/ui' is already claimed by agent 'other'",
+    );
+    assert_eq!(current_branch(dir.path()), "feature/api");
+}
+
+#[test]
 fn heartbeat_json_reports_stale_conflicting_agent_without_takeover() {
     let dir = TestDir::new("zaphod-cli-safety");
     init_repo_with_pair_branches(dir.path());

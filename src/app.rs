@@ -85,6 +85,7 @@ pub fn run(cli: Cli) -> Result<(), AppError> {
             pair,
             branch,
             side,
+            target,
             note,
             clear_note,
             stale_after,
@@ -94,7 +95,7 @@ pub fn run(cli: Cli) -> Result<(), AppError> {
             pair_name: pair,
             expected_branch: branch,
             expected_side: side,
-            target: false,
+            target,
             note,
             clear_note,
             stale_after,
@@ -1077,7 +1078,7 @@ fn heartbeat_claim(options: ClaimScopeOptions) -> Result<(), AppError> {
         pair_name,
         expected_branch,
         expected_side,
-        target: _,
+        target,
         note,
         clear_note,
         stale_after,
@@ -1094,6 +1095,11 @@ fn heartbeat_claim(options: ClaimScopeOptions) -> Result<(), AppError> {
     let store = ClaimStore::for_repository(&repository);
     let _lock = store.lock()?;
     let context = load_status_context(&pair_name)?;
+    let claim_branch = if target {
+        context.status.other.clone()
+    } else {
+        context.status.current.clone()
+    };
     let expectation = build_branch_expectation_report(&context, expected_branch, expected_side);
     let expectation_error = expectation.as_ref().and_then(|expectation| {
         (!expectation.ok).then(|| AppError::AssertFailed {
@@ -1109,7 +1115,7 @@ fn heartbeat_claim(options: ClaimScopeOptions) -> Result<(), AppError> {
             claims_path: store.path().display().to_string(),
             agent,
             pair: pair_name,
-            branch: context.status.current,
+            branch: claim_branch,
             claim: None,
             conflict: None,
             expectation,
@@ -1123,9 +1129,7 @@ fn heartbeat_claim(options: ClaimScopeOptions) -> Result<(), AppError> {
 
     let mut claims = store.load()?;
 
-    if let Some(conflict) =
-        claims.conflict_for_scope(&agent, &context.status.pair, &context.status.current)
-    {
+    if let Some(conflict) = claims.conflict_for_scope(&agent, &context.status.pair, &claim_branch) {
         let conflict_agent = conflict.agent.clone();
         let now_unix = if stale_after_seconds.is_some() {
             Some(current_unix_timestamp()?)
@@ -1146,7 +1150,7 @@ fn heartbeat_claim(options: ClaimScopeOptions) -> Result<(), AppError> {
             claims_path: store.path().display().to_string(),
             agent,
             pair: context.status.pair,
-            branch: context.status.current,
+            branch: claim_branch,
             claim: None,
             conflict: Some(conflict.clone()),
             expectation,
@@ -1163,18 +1167,18 @@ fn heartbeat_claim(options: ClaimScopeOptions) -> Result<(), AppError> {
     }
 
     let previous_claim = claims
-        .get_for_scope(&agent, &context.status.pair, &context.status.current)
+        .get_for_scope(&agent, &context.status.pair, &claim_branch)
         .cloned()
         .ok_or_else(|| AppError::ClaimNotFound {
             agent: agent.clone(),
             pair: context.status.pair.clone(),
-            branch: context.status.current.clone(),
+            branch: claim_branch.clone(),
         })?;
 
     let claim = AgentClaim::new_with_note(
         agent,
         context.status.pair,
-        context.status.current,
+        claim_branch,
         current_unix_timestamp()?,
         if clear_note {
             None

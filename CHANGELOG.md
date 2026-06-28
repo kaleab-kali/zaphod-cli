@@ -7,6 +7,12 @@ and this project uses semantic versioning for published releases.
 
 ## Unreleased
 
+### Added
+
+- `heartbeat --target` can now refresh an existing paired target branch claim
+  without switching, keeping reserved target branches fresh during current-side
+  work.
+
 ## 0.1.39 - 2026-06-23
 
 ### Added

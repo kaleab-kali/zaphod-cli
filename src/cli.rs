@@ -186,7 +186,7 @@ pub enum CliCommand {
         stale_after: Option<String>,
     },
 
-    /// Refresh an existing agent session claim for the current pair and branch.
+    /// Refresh an existing agent session claim for the current or paired target branch.
     Heartbeat {
         /// Emit machine-readable JSON.
         #[arg(long)]
@@ -207,6 +207,10 @@ pub enum CliCommand {
         /// Pair side expected as the current branch before refreshing the claim.
         #[arg(long)]
         side: Option<PairSide>,
+
+        /// Refresh the paired target branch claim without switching branches.
+        #[arg(long)]
+        target: bool,
 
         /// Replace the local note on the refreshed claim.
         #[arg(long, conflicts_with = "clear_note")]
@@ -936,6 +940,7 @@ mod tests {
                 pair: "api".to_owned(),
                 branch: None,
                 side: None,
+                target: false,
                 note: None,
                 clear_note: false,
                 stale_after: None,
@@ -964,6 +969,7 @@ mod tests {
                 pair: "default".to_owned(),
                 branch: Some("feature/api".to_owned()),
                 side: Some(PairSide::Left),
+                target: false,
                 note: None,
                 clear_note: false,
                 stale_after: None,
@@ -990,6 +996,7 @@ mod tests {
                 pair: "default".to_owned(),
                 branch: None,
                 side: None,
+                target: false,
                 note: None,
                 clear_note: false,
                 stale_after: Some("2h".to_owned()),
@@ -1016,6 +1023,7 @@ mod tests {
                 pair: "default".to_owned(),
                 branch: None,
                 side: None,
+                target: false,
                 note: Some("still editing".to_owned()),
                 clear_note: false,
                 stale_after: None,
@@ -1035,8 +1043,29 @@ mod tests {
                 pair: "default".to_owned(),
                 branch: None,
                 side: None,
+                target: false,
                 note: None,
                 clear_note: true,
+                stale_after: None,
+            }
+        );
+    }
+
+    #[test]
+    fn parses_heartbeat_target_scope() {
+        let cli = Cli::parse_from(["zaphod", "heartbeat", "--agent", "codex", "--target"]);
+
+        assert_eq!(
+            cli.command,
+            CliCommand::Heartbeat {
+                json: false,
+                agent: "codex".to_owned(),
+                pair: "default".to_owned(),
+                branch: None,
+                side: None,
+                target: true,
+                note: None,
+                clear_note: false,
                 stale_after: None,
             }
         );

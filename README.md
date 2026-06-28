@@ -22,8 +22,8 @@ Zaphod is in early development. The current `0.1.x` CLI can:
 - Assert the expected branch, pair, pair side, or agent claim before scripted
   work starts or resumes.
 - Claim, heartbeat, and release a pair/branch for an agent session.
-- Claim the paired target branch without switching, so guarded agent switches
-  can require an existing target claim.
+- Claim and refresh the paired target branch without switching, so guarded
+  agent switches can require an existing target claim.
 - Emit a handoff snapshot for agent-to-agent continuation.
 - Refuse unsafe switches when the worktree is dirty or Git is mid-operation.
 - Emit JSON status, switch, and pair-mutation results for scripts.
@@ -108,6 +108,7 @@ zaphod claim --agent codex --pair search --stale-after 2h --json
 zaphod preflight --agent codex --require-claim --json
 zaphod assert --pair search --agent codex --require-claim --json
 zaphod heartbeat --agent codex --pair search --note "writing regression tests" --json
+zaphod heartbeat --agent codex --pair search --target --note "still reserving UI side" --json
 zaphod heartbeat --agent codex --pair search --stale-after 2h --json
 zaphod claims --current --json
 zaphod claims --target --json
@@ -492,6 +493,7 @@ zaphod heartbeat --agent codex --pair api
 zaphod heartbeat --agent codex --pair api --json
 zaphod heartbeat --agent codex --pair api --note "adding tests" --json
 zaphod heartbeat --agent codex --pair api --clear-note --json
+zaphod heartbeat --agent codex --pair api --target --json
 zaphod heartbeat --agent codex --pair api --side left --json
 zaphod heartbeat --agent codex --pair api --stale-after 2h --json
 ```
@@ -511,6 +513,10 @@ note option is provided, `heartbeat` preserves the existing note.
 
 Use `--branch` or `--side` to refuse the refresh unless the current branch is
 still the expected branch or pair side.
+
+Use `--target` to refresh an existing claim on the paired branch that
+`zaphod switch` would move to without switching branches. This keeps a reserved
+target branch fresh while the agent continues work on the current branch.
 
 Use `--stale-after` to add `conflict_stale` to JSON conflict reports. This is a
 reporting aid only: `heartbeat` still refuses the conflict and never takes over
