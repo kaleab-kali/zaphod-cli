@@ -19,8 +19,8 @@ Zaphod is in early development. The current `0.1.x` CLI can:
 - Preview a safe switch without changing branches.
 - List, rename, and remove branch pairs.
 - Run preflight checks for humans and coding agents.
-- Assert the expected branch, pair, pair side, or agent claim before scripted
-  work starts or resumes.
+- Assert the expected branch, pair, pair side, current claim, or paired target
+  claim before scripted work starts or resumes.
 - Claim, heartbeat, and release a pair/branch for an agent session.
 - Claim, refresh, and release the paired target branch without switching, so
   guarded agent switches can require an existing target claim.
@@ -72,6 +72,7 @@ zaphod heartbeat --agent codex --pair api --side left --note "adding tests" --js
 zaphod heartbeat --agent codex --pair api --stale-after 2h --json
 zaphod assert --pair api --side left --json
 zaphod assert --pair api --side left --agent codex --require-claim --json
+zaphod assert --pair api --agent codex --require-target-claim --json
 zaphod handoff --agent codex --require-claim --json
 zaphod handoff --agent codex --require-target-claim --json
 zaphod handoff --agent codex --side left --stale-after 2h --json
@@ -108,6 +109,7 @@ zaphod claim --agent codex --pair search --stale-after 2h --json
 # work on the branch
 zaphod preflight --agent codex --require-claim --json
 zaphod assert --pair search --agent codex --require-claim --json
+zaphod assert --pair search --agent codex --require-target-claim --json
 zaphod handoff --agent codex --require-target-claim --json
 zaphod heartbeat --agent codex --pair search --note "writing regression tests" --json
 zaphod heartbeat --agent codex --pair search --target --note "still reserving UI side" --json
@@ -437,6 +439,7 @@ zaphod assert --pair api
 zaphod assert --side left
 zaphod assert --pair api --side right --json
 zaphod assert --pair api --agent codex --require-claim --json
+zaphod assert --pair api --agent codex --require-target-claim --json
 ```
 
 If no selector is provided, `assert` checks that the current branch belongs to
@@ -449,6 +452,11 @@ With `--agent`, `assert` also checks claim readiness for the current pair and
 branch. With `--require-claim`, the requested agent must already own that
 claim. This is useful during long-running work because unlike `preflight`, it
 does not require a clean worktree and does not refresh the claim timestamp.
+
+Use `--require-target-claim` with `--agent` when the script must prove the
+paired target branch is already reserved by the same agent before continuing.
+This is useful after `claim --target` and before handing work to a script that
+may later switch branches.
 
 ### `zaphod claim`
 

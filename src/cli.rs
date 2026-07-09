@@ -144,6 +144,10 @@ pub enum CliCommand {
         /// Refuse unless the requested agent already owns the current claim.
         #[arg(long, requires = "agent")]
         require_claim: bool,
+
+        /// Refuse unless the requested agent already owns the paired target claim.
+        #[arg(long, requires = "agent")]
+        require_target_claim: bool,
     },
 
     /// Claim the current or paired target branch for an agent session.
@@ -732,6 +736,7 @@ mod tests {
                 side: Some(PairSide::Left),
                 agent: None,
                 require_claim: false,
+                require_target_claim: false,
             }
         );
     }
@@ -759,6 +764,31 @@ mod tests {
                 side: Some(PairSide::Left),
                 agent: Some("codex".to_owned()),
                 require_claim: true,
+                require_target_claim: false,
+            }
+        );
+    }
+
+    #[test]
+    fn parses_assert_target_claim_guard() {
+        let cli = Cli::parse_from([
+            "zaphod",
+            "assert",
+            "--agent",
+            "codex",
+            "--require-target-claim",
+        ]);
+
+        assert_eq!(
+            cli.command,
+            CliCommand::Assert {
+                json: false,
+                pair: None,
+                branch: None,
+                side: None,
+                agent: Some("codex".to_owned()),
+                require_claim: false,
+                require_target_claim: true,
             }
         );
     }
@@ -767,6 +797,17 @@ mod tests {
     fn assert_require_claim_requires_agent() {
         let error = Cli::try_parse_from(["zaphod", "assert", "--require-claim"])
             .expect_err("reject required claim without agent");
+
+        assert_eq!(
+            error.kind(),
+            clap::error::ErrorKind::MissingRequiredArgument
+        );
+    }
+
+    #[test]
+    fn assert_require_target_claim_requires_agent() {
+        let error = Cli::try_parse_from(["zaphod", "assert", "--require-target-claim"])
+            .expect_err("reject required target claim without agent");
 
         assert_eq!(
             error.kind(),
