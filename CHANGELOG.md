@@ -7,6 +7,12 @@ and this project uses semantic versioning for published releases.
 
 ## Unreleased
 
+### Added
+
+- `handoff --require-target-claim` now refuses unless the requested agent
+  already owns the paired target branch claim, giving dirty-worktree handoffs a
+  read-only target reservation guard.
+
 ## 0.1.41 - 2026-07-10
 
 ### Added
