@@ -73,6 +73,7 @@ zaphod heartbeat --agent codex --pair api --stale-after 2h --json
 zaphod assert --pair api --side left --json
 zaphod assert --pair api --side left --agent codex --require-claim --json
 zaphod handoff --agent codex --require-claim --json
+zaphod handoff --agent codex --require-target-claim --json
 zaphod handoff --agent codex --side left --stale-after 2h --json
 zaphod status --json
 zaphod switch --dry-run --json
@@ -107,6 +108,7 @@ zaphod claim --agent codex --pair search --stale-after 2h --json
 # work on the branch
 zaphod preflight --agent codex --require-claim --json
 zaphod assert --pair search --agent codex --require-claim --json
+zaphod handoff --agent codex --require-target-claim --json
 zaphod heartbeat --agent codex --pair search --note "writing regression tests" --json
 zaphod heartbeat --agent codex --pair search --target --note "still reserving UI side" --json
 zaphod heartbeat --agent codex --pair search --stale-after 2h --json
@@ -157,7 +159,9 @@ conflicts as stale without removing them. With `--branch` or `--side`, the
 handoff can also prove the snapshot was captured from the expected branch or
 pair side before another agent trusts it. When `--agent` is present, handoff
 JSON also includes `target_claim`, so the receiving agent can see whether the
-paired target branch is already claimed before it attempts a switch.
+paired target branch is already claimed before it attempts a switch. With
+`--require-target-claim`, handoff refuses unless that paired target branch is
+already claimed by the requested agent.
 
 ## Safety Model
 
@@ -610,6 +614,7 @@ zaphod handoff --json
 zaphod handoff --branch feature/api --side left --json
 zaphod handoff --name api --agent codex --json
 zaphod handoff --name api --agent codex --require-claim --json
+zaphod handoff --name api --agent codex --require-target-claim --json
 zaphod handoff --name api --agent codex --stale-after 2h --json
 ```
 
@@ -627,6 +632,12 @@ or `d`.
 Use `--require-claim` with `--agent` when the receiving agent should only trust
 the snapshot if that agent already owns the current pair and branch claim. This
 is read-only: it does not refresh the claim timestamp or change claim metadata.
+
+Use `--require-target-claim` with `--agent` when the receiving agent should
+only trust the snapshot if that agent already owns the paired target branch
+claim. This is useful after reserving the other side with `claim --target`
+because it can run while the current worktree is dirty and does not switch
+branches.
 
 Use `--branch` and `--side` when the receiving agent should only trust a
 handoff captured from a specific branch or pair side. The JSON report includes

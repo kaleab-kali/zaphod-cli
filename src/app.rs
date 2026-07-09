@@ -159,8 +159,18 @@ pub fn run(cli: Cli) -> Result<(), AppError> {
             side,
             agent,
             require_claim,
+            require_target_claim,
             stale_after,
-        } => show_handoff(json, name, branch, side, agent, require_claim, stale_after),
+        } => show_handoff(HandoffOptions {
+            json,
+            pair_name: name,
+            expected_branch: branch,
+            expected_side: side,
+            agent,
+            require_claim,
+            require_target_claim,
+            stale_after,
+        }),
         CliCommand::Doctor { json, stale_after } => run_doctor(json, stale_after),
         CliCommand::Completions { shell } => generate_completions(shell),
     }
@@ -1519,15 +1529,29 @@ fn unclaim_current_scope(
     Ok(())
 }
 
-fn show_handoff(
+struct HandoffOptions {
     json: bool,
     pair_name: String,
     expected_branch: Option<String>,
     expected_side: Option<PairSide>,
     agent: Option<String>,
     require_claim: bool,
+    require_target_claim: bool,
     stale_after: Option<String>,
-) -> Result<(), AppError> {
+}
+
+fn show_handoff(options: HandoffOptions) -> Result<(), AppError> {
+    let HandoffOptions {
+        json,
+        pair_name,
+        expected_branch,
+        expected_side,
+        agent,
+        require_claim,
+        require_target_claim,
+        stale_after,
+    } = options;
+
     if let Some(agent) = &agent {
         validate_agent_name(agent)?;
     }
@@ -1667,19 +1691,43 @@ fn show_handoff(
 
         report.claim = Some(claim_report);
 
+        let mut required_target_claim_error = None;
         if let Some(target_branch) = target_claim_branch {
-            report.target_claim = Some(build_claim_report_from_claims(
+            let target_claim_report = build_claim_report_from_claims(
                 &claim_store,
                 &claims,
                 &claim_pair,
                 &target_branch,
-                agent,
-                false,
+                agent.clone(),
+                require_target_claim,
                 stale_after_seconds,
-            )?);
+            )?;
+            required_target_claim_error = if require_target_claim {
+                if let Some(conflict) = &target_claim_report.conflict {
+                    Some(AppError::ClaimConflict {
+                        agent: conflict.agent.clone(),
+                        pair: conflict.pair.clone(),
+                        branch: conflict.branch.clone(),
+                    })
+                } else if !target_claim_report.claim_owned {
+                    Some(AppError::ClaimRequired {
+                        agent: agent.clone(),
+                        pair: claim_pair.clone(),
+                        branch: target_branch.clone(),
+                    })
+                } else {
+                    None
+                }
+            } else {
+                None
+            };
+            report.target_claim = Some(target_claim_report);
         }
 
         if let Some(error) = required_claim_error {
+            return finish_handoff_with_error(report, error, json);
+        }
+        if let Some(error) = required_target_claim_error {
             return finish_handoff_with_error(report, error, json);
         }
     }

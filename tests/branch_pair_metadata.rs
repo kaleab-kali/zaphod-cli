@@ -1798,6 +1798,47 @@ fn handoff_json_requires_existing_claim_for_agent() {
 }
 
 #[test]
+fn handoff_json_requires_existing_target_claim_for_agent_while_dirty() {
+    let dir = TestDir::new("zaphod-cli-metadata");
+    init_repo_with_pair_branches(dir.path());
+    let pair = zaphod(dir.path(), ["pair", "feature/api", "feature/ui"]);
+    assert_success(&pair);
+    let current_claim = zaphod(dir.path(), ["claim", "--agent", "codex"]);
+    assert_success(&current_claim);
+    let target_claim = zaphod(dir.path(), ["claim", "--agent", "codex", "--target"]);
+    assert_success(&target_claim);
+    fs::write(dir.path().join("dirty.txt"), "local work\n").expect("write dirty file");
+
+    let output = zaphod(
+        dir.path(),
+        [
+            "handoff",
+            "--json",
+            "--agent",
+            "codex",
+            "--require-claim",
+            "--require-target-claim",
+        ],
+    );
+
+    assert_success(&output);
+    assert_eq!(current_branch(dir.path()), "feature/api");
+    let report: serde_json::Value = serde_json::from_slice(&output.stdout).expect("handoff json");
+    assert_eq!(report["ok"], true);
+    assert_eq!(report["worktree"], "dirty");
+    assert_eq!(report["claim"]["claim_required"], true);
+    assert_eq!(report["claim"]["claim_owned"], true);
+    assert_eq!(report["claim"]["owned_claim"]["branch"], "feature/api");
+    assert_eq!(report["target_claim"]["claim_required"], true);
+    assert_eq!(report["target_claim"]["claim_owned"], true);
+    assert_eq!(
+        report["target_claim"]["owned_claim"]["branch"],
+        "feature/ui"
+    );
+    assert_eq!(report["errors"], json!([]));
+}
+
+#[test]
 fn handoff_json_records_expected_branch_and_side() {
     let dir = TestDir::new("zaphod-cli-metadata");
     init_repo_with_pair_branches(dir.path());
