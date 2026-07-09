@@ -149,8 +149,9 @@ pub fn run(cli: Cli) -> Result<(), AppError> {
             agent,
             pair,
             branch,
+            target,
             side,
-        } => unclaim_current_scope(json, agent, pair, branch, side),
+        } => unclaim_current_scope(json, agent, pair, branch, target, side),
         CliCommand::Handoff {
             json,
             name,
@@ -1456,8 +1457,9 @@ fn prune_claims(options: PruneClaimsOptions) -> Result<(), AppError> {
 fn unclaim_current_scope(
     json: bool,
     agent: String,
-    pair_name: String,
+    mut pair_name: String,
     branch: Option<String>,
+    target: bool,
     side: Option<PairSide>,
 ) -> Result<(), AppError> {
     validate_agent_name(&agent)?;
@@ -1465,6 +1467,10 @@ fn unclaim_current_scope(
     let branch = if let Some(branch) = branch {
         ensure_branch_name_is_valid(&repository, &branch)?;
         branch
+    } else if target {
+        let context = load_status_context(&pair_name)?;
+        pair_name = context.status.pair;
+        context.status.other
     } else if let Some(side) = side {
         let pairs = MetadataStore::for_repository(&repository).load()?;
         let pair = pairs

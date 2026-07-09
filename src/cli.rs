@@ -326,8 +326,12 @@ pub enum CliCommand {
         #[arg(long)]
         branch: Option<String>,
 
+        /// Release the paired target branch claim without switching branches.
+        #[arg(long, conflicts_with_all = ["branch", "side"])]
+        target: bool,
+
         /// Pair side for the claim. Defaults to the current branch when omitted.
-        #[arg(long, conflicts_with = "branch")]
+        #[arg(long, conflicts_with_all = ["branch", "target"])]
         side: Option<PairSide>,
     },
 
@@ -1525,6 +1529,7 @@ mod tests {
                 agent: "codex".to_owned(),
                 pair: "default".to_owned(),
                 branch: Some("feature/api".to_owned()),
+                target: false,
                 side: None,
             }
         );
@@ -1543,13 +1548,31 @@ mod tests {
                 agent: "codex".to_owned(),
                 pair: "api".to_owned(),
                 branch: None,
+                target: false,
                 side: Some(PairSide::Left),
             }
         );
     }
 
     #[test]
-    fn unclaim_side_conflicts_with_branch_target() {
+    fn parses_unclaim_target_scope() {
+        let cli = Cli::parse_from(["zaphod", "unclaim", "--agent", "codex", "--target"]);
+
+        assert_eq!(
+            cli.command,
+            CliCommand::Unclaim {
+                json: false,
+                agent: "codex".to_owned(),
+                pair: "default".to_owned(),
+                branch: None,
+                target: true,
+                side: None,
+            }
+        );
+    }
+
+    #[test]
+    fn unclaim_side_conflicts_with_branch_scope() {
         let error = Cli::try_parse_from([
             "zaphod",
             "unclaim",
@@ -1561,6 +1584,32 @@ mod tests {
             "left",
         ])
         .expect_err("reject side and branch targets together");
+
+        assert_eq!(error.kind(), clap::error::ErrorKind::ArgumentConflict);
+    }
+
+    #[test]
+    fn unclaim_target_conflicts_with_branch_scope() {
+        let error = Cli::try_parse_from([
+            "zaphod",
+            "unclaim",
+            "--agent",
+            "codex",
+            "--target",
+            "--branch",
+            "feature/api",
+        ])
+        .expect_err("reject target and branch scopes together");
+
+        assert_eq!(error.kind(), clap::error::ErrorKind::ArgumentConflict);
+    }
+
+    #[test]
+    fn unclaim_target_conflicts_with_side_scope() {
+        let error = Cli::try_parse_from([
+            "zaphod", "unclaim", "--agent", "codex", "--target", "--side", "left",
+        ])
+        .expect_err("reject target and side scopes together");
 
         assert_eq!(error.kind(), clap::error::ErrorKind::ArgumentConflict);
     }
