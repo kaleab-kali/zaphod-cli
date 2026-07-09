@@ -57,7 +57,16 @@ pub fn run(cli: Cli) -> Result<(), AppError> {
             side,
             agent,
             require_claim,
-        } => assert_repository_state(json, pair, branch, side, agent, require_claim),
+            require_target_claim,
+        } => assert_repository_state(
+            json,
+            pair,
+            branch,
+            side,
+            agent,
+            require_claim,
+            require_target_claim,
+        ),
         CliCommand::Claim {
             json,
             agent,
@@ -766,6 +775,7 @@ fn assert_repository_state(
     expected_side: Option<PairSide>,
     agent: Option<String>,
     require_claim: bool,
+    require_target_claim: bool,
 ) -> Result<(), AppError> {
     if let Some(agent) = &agent {
         validate_agent_name(agent)?;
@@ -794,6 +804,7 @@ fn assert_repository_state(
 
     let mut pair_report = None;
     let mut claim_scope_pair = None;
+    let mut target_claim_scope = None;
     if let Some(pair_name) = effective_pair {
         let store = MetadataStore::for_repository(&repository);
         let pairs = store.load()?;
@@ -810,6 +821,11 @@ fn assert_repository_state(
 
                 if current_side.is_some() {
                     claim_scope_pair = Some(pair.name.clone());
+                    if require_target_claim
+                        && let Some(target_branch) = pair.other_branch(&current_branch)
+                    {
+                        target_claim_scope = Some((pair.name.clone(), target_branch.to_owned()));
+                    }
                 }
 
                 if let Some(expected_side) = expected_side
@@ -847,7 +863,7 @@ fn assert_repository_state(
     let mut claim_conflict = None;
     let mut claim_blocked = None;
     let mut claim_required = None;
-    let claim = if let (Some(agent), Some(pair)) = (agent, claim_scope_pair) {
+    let claim = if let (Some(agent), Some(pair)) = (agent.clone(), claim_scope_pair) {
         let claim_report = build_claim_report_for_scope(
             &repository,
             &pair,
@@ -878,16 +894,55 @@ fn assert_repository_state(
         None
     };
 
+    let mut target_claim_conflict = None;
+    let mut target_claim_blocked = None;
+    let mut target_claim_required = None;
+    let target_claim =
+        if let (Some(agent), Some((pair, branch))) = (agent.clone(), target_claim_scope) {
+            let claim_report = build_claim_report_for_scope(
+                &repository,
+                &pair,
+                &branch,
+                agent,
+                require_target_claim,
+                None,
+            )?;
+            let conflict = claim_report.conflict.clone();
+            if conflict.is_none() && !claim_report.metadata_lock.ok {
+                target_claim_blocked = Some(AppError::ClaimBlocked {
+                    agent: claim_report.requested_agent.clone(),
+                    pair: pair.clone(),
+                    branch: branch.clone(),
+                    reason: metadata_lock_block_reason(&claim_report.metadata_lock),
+                });
+            }
+            if require_target_claim && conflict.is_none() && !claim_report.claim_owned {
+                target_claim_required = Some(AppError::ClaimRequired {
+                    agent: claim_report.requested_agent.clone(),
+                    pair,
+                    branch,
+                });
+            }
+            target_claim_conflict = conflict;
+            Some(claim_report)
+        } else {
+            None
+        };
+
     let report = AssertReport {
         ok: failures.is_empty()
             && claim
                 .as_ref()
-                .is_none_or(|claim| claim.claim_allowed && (!require_claim || claim.claim_owned)),
+                .is_none_or(|claim| claim.claim_allowed && (!require_claim || claim.claim_owned))
+            && target_claim.as_ref().is_none_or(|claim| {
+                claim.claim_allowed && (!require_target_claim || claim.claim_owned)
+            }),
         repository_root: repository.root().display().to_string(),
         current_branch,
         expected_branch,
         pair: pair_report,
         claim,
+        target_claim,
         failures,
     };
 
@@ -906,6 +961,16 @@ fn assert_repository_state(
     } else if let Some(error) = claim_blocked {
         Err(error)
     } else if let Some(error) = claim_required {
+        Err(error)
+    } else if let Some(conflict) = target_claim_conflict {
+        Err(AppError::ClaimConflict {
+            agent: conflict.agent,
+            pair: conflict.pair,
+            branch: conflict.branch,
+        })
+    } else if let Some(error) = target_claim_blocked {
+        Err(error)
+    } else if let Some(error) = target_claim_required {
         Err(error)
     } else if !report.ok {
         Err(AppError::AssertFailed {
@@ -2471,6 +2536,9 @@ fn print_assert_report(report: &AssertReport) {
     if let Some(claim) = &report.claim {
         print_claim_readiness("Claim", claim);
     }
+    if let Some(target_claim) = &report.target_claim {
+        print_claim_readiness("Target claim", target_claim);
+    }
 
     for failure in &report.failures {
         println!("Failure: {failure}");
@@ -2928,6 +2996,7 @@ struct AssertReport {
     expected_branch: Option<String>,
     pair: Option<AssertPairReport>,
     claim: Option<PreflightClaimReport>,
+    target_claim: Option<PreflightClaimReport>,
     failures: Vec<String>,
 }
 

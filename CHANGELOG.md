@@ -7,6 +7,12 @@ and this project uses semantic versioning for published releases.
 
 ## Unreleased
 
+### Added
+
+- `assert --require-target-claim` now refuses unless the requested agent owns
+  the paired target branch claim, giving scripts a compact dirty-worktree-safe
+  target reservation guard.
+
 ## 0.1.42 - 2026-07-10
 
 ### Added
