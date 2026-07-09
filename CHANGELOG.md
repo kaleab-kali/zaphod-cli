@@ -7,6 +7,12 @@ and this project uses semantic versioning for published releases.
 
 ## Unreleased
 
+### Added
+
+- `unclaim --target` can now release a paired target branch claim without
+  switching branches, completing the target-claim lifecycle for agent
+  workflows.
+
 ## 0.1.40 - 2026-06-28
 
 ### Added

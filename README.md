@@ -22,8 +22,8 @@ Zaphod is in early development. The current `0.1.x` CLI can:
 - Assert the expected branch, pair, pair side, or agent claim before scripted
   work starts or resumes.
 - Claim, heartbeat, and release a pair/branch for an agent session.
-- Claim and refresh the paired target branch without switching, so guarded
-  agent switches can require an existing target claim.
+- Claim, refresh, and release the paired target branch without switching, so
+  guarded agent switches can require an existing target claim.
 - Emit a handoff snapshot for agent-to-agent continuation.
 - Refuse unsafe switches when the worktree is dirty or Git is mid-operation.
 - Emit JSON status, switch, and pair-mutation results for scripts.
@@ -125,6 +125,7 @@ zaphod prune-claims --orphaned --apply
 zaphod unclaim --agent codex --pair search
 zaphod unclaim --agent codex --pair search --branch feature/api
 zaphod unclaim --agent codex --pair search --side left
+zaphod unclaim --agent codex --pair search --target
 ```
 
 Claims are local metadata only. They do not lock Git, modify branches, or delete
@@ -584,14 +585,16 @@ Release an agent session claim for the current pair and branch:
 zaphod unclaim --agent codex --pair api
 zaphod unclaim --agent codex --pair api --json
 zaphod unclaim --agent codex --pair api --branch feature/api
+zaphod unclaim --agent codex --pair api --target
 zaphod unclaim --agent codex --pair api --side left
 ```
 
 By default, `unclaim` releases the matching claim for the current branch. Use
 `--branch` to release a claim for another branch without switching to it. Use
-`--side` to release a claim by the left or right side of the named pair without
-scripting a pair-metadata lookup. This is useful when an agent stopped early
-and left stale claim metadata behind.
+`--target` to release a claim on the paired branch that `zaphod switch` would
+move to without switching branches. Use `--side` to release a claim by the left
+or right side of the named pair without scripting a pair-metadata lookup. This
+is useful when an agent stopped early and left stale claim metadata behind.
 
 `unclaim` only removes the matching claim metadata. It does not switch branches,
 clean files, or alter Git history.

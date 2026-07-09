@@ -1964,6 +1964,51 @@ fn unclaim_json_can_release_a_claim_by_pair_side() {
 }
 
 #[test]
+fn unclaim_json_can_release_target_claim_without_switching() {
+    let dir = TestDir::new("zaphod-cli-metadata");
+    init_repo_with_pair_branches(dir.path());
+    let pair = zaphod(dir.path(), ["pair", "feature/api", "feature/ui"]);
+    assert_success(&pair);
+    let claim = zaphod(
+        dir.path(),
+        [
+            "claim",
+            "--agent",
+            "codex",
+            "--target",
+            "--note",
+            "reserve UI side",
+        ],
+    );
+    assert_success(&claim);
+    fs::write(dir.path().join("dirty.txt"), "local work\n").expect("write dirty file");
+
+    let output = zaphod(
+        dir.path(),
+        ["unclaim", "--json", "--agent", "codex", "--target"],
+    );
+
+    assert_success(&output);
+    assert_eq!(current_branch(dir.path()), "feature/api");
+    let report: serde_json::Value = serde_json::from_slice(&output.stdout).expect("unclaim json");
+    assert_eq!(report["ok"], true);
+    assert_eq!(report["status"], "released");
+    assert_eq!(report["agent"], "codex");
+    assert_eq!(report["pair"], "default");
+    assert_eq!(report["branch"], "feature/ui");
+    assert_eq!(report["claim"]["agent"], "codex");
+    assert_eq!(report["claim"]["branch"], "feature/ui");
+    assert_eq!(report["claim"]["note"], "reserve UI side");
+
+    let claims = zaphod(dir.path(), ["claims", "--json", "--target"]);
+    assert_success(&claims);
+    let report: serde_json::Value = serde_json::from_slice(&claims.stdout).expect("claims json");
+    assert_eq!(report["filters"]["target"], true);
+    assert_eq!(report["filters"]["branch"], "feature/ui");
+    assert_eq!(report["claims"], json!([]));
+}
+
+#[test]
 fn status_reports_dirty_worktree_refusal() {
     let dir = TestDir::new("zaphod-cli-metadata");
     init_repo_with_pair_branches(dir.path());
