@@ -7,6 +7,8 @@ and this project uses semantic versioning for published releases.
 
 ## Unreleased
 
+## 0.1.41 - 2026-07-10
+
 ### Added
 
 - `unclaim --target` can now release a paired target branch claim without
