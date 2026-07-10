@@ -7,6 +7,8 @@ and this project uses semantic versioning for published releases.
 
 ## Unreleased
 
+## 0.1.44 - 2026-07-10
+
 ### Added
 
 - `preflight --require-target-claim` now refuses unless the requested agent owns
