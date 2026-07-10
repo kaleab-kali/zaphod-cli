@@ -7,6 +7,12 @@ and this project uses semantic versioning for published releases.
 
 ## Unreleased
 
+### Added
+
+- `preflight --require-target-claim` now refuses unless the requested agent owns
+  the paired target branch claim, extending target reservation checks to startup
+  gates.
+
 ## 0.1.43 - 2026-07-10
 
 ### Added

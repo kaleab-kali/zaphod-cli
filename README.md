@@ -18,7 +18,8 @@ Zaphod is in early development. The current `0.1.x` CLI can:
 - Guard agent switches against target-branch claim conflicts.
 - Preview a safe switch without changing branches.
 - List, rename, and remove branch pairs.
-- Run preflight checks for humans and coding agents.
+- Run preflight checks for humans and coding agents, including current and
+  paired target claim guards.
 - Assert the expected branch, pair, pair side, current claim, or paired target
   claim before scripted work starts or resumes.
 - Claim, heartbeat, and release a pair/branch for an agent session.
@@ -65,6 +66,7 @@ Coding agents can use Zaphod as a preflight gate:
 zaphod preflight --agent codex --json
 zaphod preflight --agent codex --branch feature/api --side left --json
 zaphod preflight --agent codex --require-claim --json
+zaphod preflight --agent codex --require-target-claim --json
 zaphod preflight --agent codex --stale-after 2h --json
 zaphod claim --agent codex --pair api --side left --note "editing API routes" --json
 zaphod claim --agent codex --pair api --stale-after 2h --json
@@ -108,6 +110,7 @@ zaphod claim --agent codex --pair search --target --note "reserve UI side" --jso
 zaphod claim --agent codex --pair search --stale-after 2h --json
 # work on the branch
 zaphod preflight --agent codex --require-claim --json
+zaphod preflight --agent codex --require-target-claim --json
 zaphod assert --pair search --agent codex --require-claim --json
 zaphod assert --pair search --agent codex --require-target-claim --json
 zaphod handoff --agent codex --require-target-claim --json
@@ -387,6 +390,7 @@ zaphod preflight --json
 zaphod preflight --agent codex --json
 zaphod preflight --branch feature/api --side left --json
 zaphod preflight --agent codex --require-claim --json
+zaphod preflight --agent codex --require-target-claim --json
 zaphod preflight --agent codex --stale-after 2h --json
 ```
 
@@ -405,6 +409,11 @@ Use `--require-claim` with `--agent` when an agent is resuming work and must
 prove it already owns the current pair and branch claim. This is read-only: it
 does not refresh the claim timestamp. JSON reports include `claim_required`,
 `claim_owned`, and `owned_claim` fields.
+
+Use `--require-target-claim` with `--agent` when startup checks must prove the
+paired target branch is already reserved by the same agent before the agent
+continues. This is useful before workflows that expect a later guarded switch
+to the other branch.
 
 Use `--branch` or `--side` when automation must prove it is about to edit the
 intended branch before doing any work:
