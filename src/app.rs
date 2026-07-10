@@ -48,8 +48,18 @@ pub fn run(cli: Cli) -> Result<(), AppError> {
             side,
             agent,
             require_claim,
+            require_target_claim,
             stale_after,
-        } => run_preflight(&name, json, branch, side, agent, require_claim, stale_after),
+        } => run_preflight(PreflightOptions {
+            name,
+            json,
+            expected_branch: branch,
+            expected_side: side,
+            agent,
+            require_claim,
+            require_target_claim,
+            stale_after,
+        }),
         CliCommand::Assert {
             json,
             pair,
@@ -515,15 +525,29 @@ fn switch_branches(
     Ok(())
 }
 
-fn run_preflight(
-    name: &str,
+struct PreflightOptions {
+    name: String,
     json: bool,
     expected_branch: Option<String>,
     expected_side: Option<PairSide>,
     agent: Option<String>,
     require_claim: bool,
+    require_target_claim: bool,
     stale_after: Option<String>,
-) -> Result<(), AppError> {
+}
+
+fn run_preflight(options: PreflightOptions) -> Result<(), AppError> {
+    let PreflightOptions {
+        name,
+        json,
+        expected_branch,
+        expected_side,
+        agent,
+        require_claim,
+        require_target_claim,
+        stale_after,
+    } = options;
+
     if let Some(agent) = &agent {
         validate_agent_name(agent)?;
     }
@@ -532,7 +556,7 @@ fn run_preflight(
         .map(parse_duration_seconds)
         .transpose()?;
 
-    match load_status_context(name) {
+    match load_status_context(&name) {
         Ok(context) => {
             let mut report = PreflightReport::from_status_context(&context);
             let expectation_error = if let Some(expectation) =
@@ -549,14 +573,19 @@ fn run_preflight(
             };
             let mut claim_blocked = None;
             let mut claim_required = None;
+            let mut target_claim_blocked = None;
+            let mut target_claim_required = None;
+            let mut target_claim_conflict = None;
             let claim_conflict = if let Some(agent) = agent {
                 let (claim_report, target_claim_report) = build_preflight_claim_reports(
                     &context,
                     agent,
                     require_claim,
+                    require_target_claim,
                     stale_after_seconds,
                 )?;
                 let conflict = claim_report.conflict.clone();
+                let target_conflict = target_claim_report.conflict.clone();
                 if conflict.is_none() && !claim_report.metadata_lock.ok {
                     claim_blocked = Some(AppError::ClaimBlocked {
                         agent: claim_report.requested_agent.clone(),
@@ -572,11 +601,35 @@ fn run_preflight(
                         branch: context.status.current.clone(),
                     });
                 }
+                if require_target_claim
+                    && target_conflict.is_none()
+                    && !target_claim_report.metadata_lock.ok
+                {
+                    target_claim_blocked = Some(AppError::ClaimBlocked {
+                        agent: target_claim_report.requested_agent.clone(),
+                        pair: context.status.pair.clone(),
+                        branch: context.status.other.clone(),
+                        reason: metadata_lock_block_reason(&target_claim_report.metadata_lock),
+                    });
+                }
+                if require_target_claim
+                    && target_conflict.is_none()
+                    && !target_claim_report.claim_owned
+                {
+                    target_claim_required = Some(AppError::ClaimRequired {
+                        agent: target_claim_report.requested_agent.clone(),
+                        pair: context.status.pair.clone(),
+                        branch: context.status.other.clone(),
+                    });
+                }
                 report.ready = report.ready
                     && claim_report.claim_allowed
-                    && (!require_claim || claim_report.claim_owned);
+                    && (!require_claim || claim_report.claim_owned)
+                    && (!require_target_claim
+                        || (target_claim_report.claim_allowed && target_claim_report.claim_owned));
                 report.claim = Some(claim_report);
                 report.target_claim = Some(target_claim_report);
+                target_claim_conflict = require_target_claim.then_some(target_conflict).flatten();
                 conflict
             } else {
                 None
@@ -598,6 +651,16 @@ fn run_preflight(
                 Err(error)
             } else if let Some(error) = claim_required {
                 Err(error)
+            } else if let Some(conflict) = target_claim_conflict {
+                Err(AppError::ClaimConflict {
+                    agent: conflict.agent,
+                    pair: conflict.pair,
+                    branch: conflict.branch,
+                })
+            } else if let Some(error) = target_claim_blocked {
+                Err(error)
+            } else if let Some(error) = target_claim_required {
+                Err(error)
             } else if !context.status.switch_allowed {
                 Err(AppError::PreflightRefused {
                     reasons: context.status.refusal_reasons,
@@ -609,7 +672,7 @@ fn run_preflight(
             }
         }
         Err(error) => {
-            let report = PreflightReport::from_error(name, &error);
+            let report = PreflightReport::from_error(&name, &error);
             if json {
                 println!("{}", serde_json::to_string_pretty(&report)?);
             } else {
@@ -623,7 +686,8 @@ fn run_preflight(
 fn build_preflight_claim_reports(
     context: &StatusContext,
     agent: String,
-    claim_required: bool,
+    current_claim_required: bool,
+    target_claim_required: bool,
     stale_after_seconds: Option<u64>,
 ) -> Result<(PreflightClaimReport, PreflightClaimReport), AppError> {
     let store = ClaimStore::for_repository(&context.repository);
@@ -634,7 +698,7 @@ fn build_preflight_claim_reports(
         &context.status.pair,
         &context.status.current,
         agent.clone(),
-        claim_required,
+        current_claim_required,
         stale_after_seconds,
     )?;
     let target_claim_report = build_claim_report_from_claims(
@@ -643,7 +707,7 @@ fn build_preflight_claim_reports(
         &context.status.pair,
         &context.status.other,
         agent,
-        false,
+        target_claim_required,
         stale_after_seconds,
     )?;
 

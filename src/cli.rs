@@ -114,6 +114,10 @@ pub enum CliCommand {
         #[arg(long, requires = "agent")]
         require_claim: bool,
 
+        /// Refuse unless the requested agent already owns the paired target claim.
+        #[arg(long, requires = "agent")]
+        require_target_claim: bool,
+
         /// Mark claim conflicts older than this duration as stale, for example 30m, 2h, or 1d.
         #[arg(long, requires = "agent")]
         stale_after: Option<String>,
@@ -668,6 +672,7 @@ mod tests {
                 side: Some(PairSide::Left),
                 agent: Some("codex".to_owned()),
                 require_claim: false,
+                require_target_claim: false,
                 stale_after: Some("2h".to_owned()),
             }
         );
@@ -686,6 +691,32 @@ mod tests {
                 side: None,
                 agent: Some("codex".to_owned()),
                 require_claim: true,
+                require_target_claim: false,
+                stale_after: None,
+            }
+        );
+    }
+
+    #[test]
+    fn parses_preflight_require_target_claim() {
+        let cli = Cli::parse_from([
+            "zaphod",
+            "preflight",
+            "--agent",
+            "codex",
+            "--require-target-claim",
+        ]);
+
+        assert_eq!(
+            cli.command,
+            CliCommand::Preflight {
+                json: false,
+                name: "default".to_owned(),
+                branch: None,
+                side: None,
+                agent: Some("codex".to_owned()),
+                require_claim: false,
+                require_target_claim: true,
                 stale_after: None,
             }
         );
@@ -695,6 +726,17 @@ mod tests {
     fn preflight_require_claim_requires_agent() {
         let error = Cli::try_parse_from(["zaphod", "preflight", "--require-claim"])
             .expect_err("reject required claim without agent");
+
+        assert_eq!(
+            error.kind(),
+            clap::error::ErrorKind::MissingRequiredArgument
+        );
+    }
+
+    #[test]
+    fn preflight_require_target_claim_requires_agent() {
+        let error = Cli::try_parse_from(["zaphod", "preflight", "--require-target-claim"])
+            .expect_err("reject required target claim without agent");
 
         assert_eq!(
             error.kind(),
